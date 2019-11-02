@@ -7,6 +7,8 @@ Integrate Spruce GEN2 Controller and GEN1, GEN2 or GEN3 Sensors with Hubitat. Co
   - Spruce GEN2 Wifi Controller
   - Hubitat Elevation Hub
   
+**Currently Hubitat and SmartThings can NOT be connected to the same account at the same time, the last linked integration will be the active connection**
+  
 **Installation**
   - App- Spruce Connect
   - Drivers- Spruce wifi master, Spruce wifi schedule, Spruce wifi zone
