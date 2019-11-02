@@ -1,0 +1,141 @@
+/**
+ *  Spruce Controller wifi zone child *
+ *  Copyright 2017 Plaid Systems
+ *
+ *	Author: NC
+ *	Date: 2019-11
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+ *  in compliance with the License. You may obtain a copy of the License at:
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed
+ *  on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License
+ *  for the specific language governing permissions and limitations under the License.
+ *
+ -------------11-2019 update---------------
+ * zone child for wifi controller
+ * ported to hubitat
+ *
+ */
+ 
+ metadata {
+	definition (name: 'Spruce wifi zone', namespace: 'plaidsystems', author: 'Plaid Systems') {
+		capability "Switch"
+        capability "Switch Level" 
+        
+        command "on"
+        command "off"
+        command "updated"
+        command "refresh"
+        
+	}
+    preferences {
+    	input description: "Zone settings are configured in the Spruce app.\n\nRefresh the configuration changes by opening the Spruce Connect SmartApp and saving.", displayDuringSetup: false, type: "paragraph", element: "paragraph", title: "Update Settings and Names"
+    }
+    tiles (scale: 2){
+        multiAttributeTile(name:"sliderTile", type: "generic", width:6, height:4){
+            tileAttribute ("switch", key: "PRIMARY_CONTROL") {
+                attributeState "off", label:'${name}', action:"on", icon:"st.valves.water.closed", backgroundColor:"#ffffff", nextState:"turningOn"
+                attributeState "on", label:'${name}', action:"off", icon:"st.valves.water.open", backgroundColor:"#00a0dc", nextState:"turningOff"
+            }            
+            /*tileAttribute ("device.level", key: "SLIDER_CONTROL") {
+                attributeState "level", action:"switch level.setLevel"
+            }
+            tileAttribute("device.tileMessage", key: "SECONDARY_CONTROL") {
+                attributeState "tileMessage", label: '${currentValue}'     
+            }*/
+        }
+        
+        standardTile("nozzle", "nozzle", width: 2, height: 1, icon:"st.valves.water.closed") {
+            state "nozzle", label: 'nozzle:\n${currentValue}'
+        }
+        standardTile("landscape", "landscape", width: 2, height: 1) {
+            state "landscape", label: 'landscape:\n${currentValue}'
+        }
+        standardTile("soil", "soil", width: 2, height: 1) {
+            state "soil", label: 'soil:\n${currentValue}'
+        }        
+        /*valueTile("zone_num", "zone_num", width: 1, height: 1) {
+            state("zone_num", label:'Zone\n${currentValue}')
+        }*/
+        standardTile ("amp", "amp", width: 1, height: 1, icon:"st.Health & Wellness.health9") {
+                state "Ok", label:'${name}', icon:"st.Health & Wellness.health9", backgroundColor:"#ffffff"
+                state "Low", label:'${name}', icon:"st.Health & Wellness.health9", backgroundColor:"#f1d801"
+                state "High", label:'${name}', icon:"st.Health & Wellness.health9", backgroundColor:"#e86d13"
+                state "Error", label:'${name}', icon:"st.Health & Wellness.health9", backgroundColor:"#bc2323"
+        }
+
+        main (["sliderTile"])
+    	details(["sliderTile","zone_num","amp","nozzle","soil","landscape"])
+    }
+}
+
+def installed(){
+	setLevel(10)	//default zone on time    
+    updated()
+}
+
+//when device preferences are changed
+def updated(){	
+    log.debug "device updated"
+    parent.child_zones(device.deviceNetworkId)	//get child zone settings
+}
+
+def refresh(){
+	parent.getsettings()
+}
+
+def generateEvent(Map results) {
+  log.debug results
+  
+  sendEvent(name: "${results.name}", value: "${results.value}", descriptionText: "${results.descriptionText}", isStateChange: true, displayed: "${results.displayed}")
+    
+  return null
+}
+
+void on(){
+	def runtime = device.latestValue('level')
+	log.debug runtime
+	parent.zoneOnOff(device.deviceNetworkId, 1, runtime)
+}
+
+void off(){
+    parent.zoneOnOff(device.deviceNetworkId, 0, 0)
+}
+
+//settings from cloud
+def childSettings(zone_num, Map results){
+	log.debug "Spruce Zone ${zone_num} settings ${results}"
+    sendEvent(name: "zone_num", value: zone_num, isStateChange: true, displayed: false)
+        
+    if (results.soil_type != null) sendEvent(name: "soil", value: results.soil_type, isStateChange: true, displayed: false)
+    else sendEvent(name: "soil", value: "not set", isStateChange: true, displayed: false)
+    if (results.nozzle_type != null) sendEvent(name: "nozzle", value: results.nozzle_type, isStateChange: true, displayed: false)
+    else sendEvent(name: "nozzle", value: "not set", isStateChange: true, displayed: false)
+    if (results.landscape_type != null) sendEvent(name: "landscape", value: results.landscape_type, isStateChange: true, displayed: false)
+    else sendEvent(name: "landscape", value: "not set", isStateChange: true, displayed: false)
+    
+}
+
+//set minutes
+def setLevel(percent) {
+	log.debug "setLevel: ${percent}"
+	sendEvent(name: "level", value: percent, displayed: false)
+}
+
+//------not used?-----------
+/*
+//set moisture
+def setHumidity(percent) {
+	log.debug "setLevel: ${percent}"
+	sendEvent(name: "humidity", value: percent, displayed: false)
+}
+
+//update settings
+def getSettings() {
+	log.debug "getSettings"
+	
+}
+*/
