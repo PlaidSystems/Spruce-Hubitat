@@ -20,22 +20,15 @@ definition(
     name: "Spruce Connect",
     namespace: "plaidsystems",
     author: "Plaid Systems",
-    description: "Connect Spruce Controller and Sensors to Samsung SmartThings",
+    description: "Connect Spruce Controller and Sensors to Hubitat Elevation",
     category: "",
     iconUrl: "http://www.plaidsystems.com/smartthings/st_spruce_leaf_250f.png",
     iconX2Url: "http://www.plaidsystems.com/smartthings/st_spruce_leaf_250f.png",
     iconX3Url: "http://www.plaidsystems.com/smartthings/st_spruce_leaf_250f.png",
     oauth: true,
-    singleInstance: true)
-{
-	//appSetting "clientId"
-	//appSetting "clientSecret"
-        
-    //atomicState.clientId = "hubitat"
-    //atomicState.clientSecret = "rf1ce71eec8361fdab2253d1d8y819a5"
-    scope = "app"
-}
-
+    singleInstance: true
+)
+{}
 
 //-----------------pages----------------------------
 preferences (oauthPage: "authPage") {
@@ -48,7 +41,7 @@ preferences (oauthPage: "authPage") {
 
 def authPage(){
     atomicState.clientId = "hubitat"
-    atomicState.clientSecret = "rf1ce71eec8361fdab2253d1d8y819a5"
+    atomicState.clientSecret = "6137b7f5efabd2f8a82f80c95f6dd50807426f72"
     
     if(!atomicState.accessToken) atomicState.accessToken = createAccessToken()	//set = so token is saved to atomicState 
     
@@ -908,7 +901,7 @@ def oauthInitUrl(){
     
 	def oauthParams = [
         response_type: "code",
-        scope: "${scope}",
+        scope: "app",
         client_id: atomicState.clientId,
         client_secret: atomicState.clientSecret,
         state: atomicState.oauthInitState,
@@ -941,7 +934,7 @@ def callback() {
             body: [
                     grant_type: "authorization_code",
                     code : "${code}",
-                    scope : scope,
+                    scope : "app",
                     client_id : atomicState.clientId,
                     client_secret: atomicState.clientSecret,
                     redirect_uri: getFullApiServerUrl() + "/oauth/callback?access_token=${atomicState.accessToken}"
