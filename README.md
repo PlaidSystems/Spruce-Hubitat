@@ -47,12 +47,13 @@ Integrate Spruce GEN2 Controller and GEN1, GEN2 or GEN3 Sensors with Hubitat. Co
 
 *It is recommended to setup and name all zones before connecting Spruce and Hubitat*
 
-Import the the Drivers and App using the URLs listed below.
+Import each of the Drivers and App using the URLs listed below.
   1. Go to Drivers Code or Apps Code in your Hubitat account
   2. Add New Driver or App
   3. Import
-  4. Copy and paste the URL
+  4. Copy and paste URL
   5. Save the Driver or App
+  6. Repeat steps 1-5 for each file, being sure the Drivers Code is added to Drivers and the App code is added to Apps 
 
 Drivers Code  
   - https://raw.githubusercontent.com/PlaidSystems/Spruce-Hubitat/master/drivers/Spruce%20wifi%20master.src
