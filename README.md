@@ -32,9 +32,8 @@ Integrate Spruce GEN2 Controller and GEN1, GEN2 or GEN3 Sensors with Hubitat. Co
   - Level:  Set the water time for each zone. This setting does not effect scheduled watering
   - Update Settings: Updates the manual schedule child device list from the Spruce Cloud
 
-**Master Device Children**
   **Schedule Device Commands**
-  Only manual schedules are listed
+  *Only Manual schedules can be started from Hubitat*
   - Off:    Stops the schedule
   - On:     Starts the schedule
 
