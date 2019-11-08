@@ -19,10 +19,30 @@ Integrate Spruce GEN2 Controller and GEN1, GEN2 or GEN3 Sensors with Hubitat. Co
   - Child Zone devices with individual zone control and monitoring
   - Each zone and each manual schedule provided as "devices" that can be used as "switches" within standard ST automations and SmartApps
   - "Contacts" can be selected to pause/resume schedules
-  - Pause device can be enabled and used in automations or SmartApps to pause/resume schedules
+  - Pause device can be enabled and used in automations or Apps to pause/resume schedules
   - Schedule, zone and valve error notifications available
   - Valve health and flow (when used with flow meter)
   - Spruce sensors paired with Hubitat can use the Spruce Connect to report values to the Spruce Cloud.
+
+ **Master Device Commands**
+  - Off:    Stops all schedules or zones that are on
+  - On:     Waters all zones for the duration specified by Set Level
+  - Pause:  Pauses a schedule for up to 2 hours before cancelling the schedule
+  - Resume: Resumes a paused schedule
+  - Level:  Set the water time for each zone. This setting does not effect scheduled watering
+  - Update Settings: Updates the manual schedule child device list from the Spruce Cloud
+
+**Master Device Children**
+  **Schedule Device Commands**
+  Only manual schedules are listed
+  - Off:    Stops the schedule
+  - On:     Starts the schedule
+
+  **Zone Device Commands**
+  - Off:    Stops this specific zone, if the zone is on as part of a schedule, the next zone in sequence will start
+  - On:     Waters the zone for the duration specified by Set Level
+  - Refresh:Updates the zone attributes from the SPruce Cloud
+  - Level:  Set the water time for the zone. This setting does not effect scheduled watering
     
 **Code Install Overview**
 
