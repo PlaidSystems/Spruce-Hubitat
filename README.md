@@ -59,7 +59,7 @@ Drivers Code
   - https://raw.githubusercontent.com/PlaidSystems/Spruce-Hubitat/master/drivers/Spruce%20wifi%20master.src
   - https://raw.githubusercontent.com/PlaidSystems/Spruce-Hubitat/master/drivers/Spruce%20wifi%20schedule.src
   - https://raw.githubusercontent.com/PlaidSystems/Spruce-Hubitat/master/drivers/Spruce%20wifi%20zone.src
-  -https://raw.githubusercontent.com/PlaidSystems/Spruce-Hubitat/master/drivers/Spruce%20sensor.src
+  - https://raw.githubusercontent.com/PlaidSystems/Spruce-Hubitat/master/drivers/Spruce%20sensor.src
   
 App Code
   - https://raw.githubusercontent.com/PlaidSystems/Spruce-Hubitat/master/apps/Spruce%20Connect.src
@@ -84,4 +84,15 @@ Install the User App called Spruce Connect and link your Spruce account to your 
   2. Select and Spruce sensors that are connected to Hubitat and should also report to Spruce Cloud
   3. Select and contact sensors that should pause watering anytime they are activated
   4. Select Done to complete the installation
+  
+**Spruce Sensor**
+
+  1. Disconnect the Spruce Sensor from the Spruce Gen2 Controller or other hubs.  For Gen2 and Gen3 sensors this is done by holding the      magnet to the sensor magnet pad until the sensor has disconnected from the hub. *Note: The Spruce Sensor does not need to be removed from the Spruce App. After connecting to Hubitat, you may opt to send the data to Spruce App, and the data will associate with the exsisting Sensor in the App.*
+  2. Go to your Hubitat hub on your PC, go to Devices and then *Discover Devices*, select Zigbee to start the search routine
+  3. Tap the magnet to teh Spruce Sensor to start the pair process
+  4. Hubitat should identify the Spruce Sensor and give your the option to name the sensor
+  5. If the sensor is not discovered after 1 minute, check the following:
+     - Sensor Driver Code has been added to your account
+     - Restart your Hubitat hub
+     - Reset(step 1) the Spruce Sensor and retry the process
   
