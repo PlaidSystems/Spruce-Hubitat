@@ -68,7 +68,7 @@ App Code
 
 Install the User App called Spruce Connect and link your Spruce account to your Hubitat account. When completed, the Spruce Connect will create virtual devices for the Spruce Controller and zones as well as any manual schedules that hav ebeen created in the Spruce app.  The Spruce Conenct can also pass Spruce Sensor data from Hubitat to the Spruce Cloud for use in Spruce scehdules.
 
-*If Spruce sensors will be connected to Hubitat, pair them now*   
+*If Spruce sensors will be connected to Hubitat, pair them now with the Spruse Sensor intructions below*   
 
   1. Go to **Apps** and **Add User App**
   2. Select the **Spruce Connect** app and follow the link to Login to Spruce to start the authorization process
