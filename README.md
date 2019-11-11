@@ -87,7 +87,8 @@ Install the User App called Spruce Connect and link your Spruce account to your 
   
 **Spruce Sensor**
 
-  1. Disconnect the Spruce Sensor from the Spruce Gen2 Controller or other hubs.  For Gen2 and Gen3 sensors this is done by holding the      magnet to the sensor magnet pad until the sensor has disconnected from the hub. *Note: The Spruce Sensor does not need to be removed from the Spruce App. After connecting to Hubitat, you may opt to send the data to Spruce App, and the data will associate with the exsisting Sensor in the App.*
+  1. Disconnect the Spruce Sensor from the Spruce Gen2 Controller or other hubs.  For Gen2 and Gen3 sensors this is done by holding the      magnet to the sensor magnet pad until the sensor has disconnected from the hub.
+     - *Note: The Spruce Sensor does not need to be removed from the Spruce App. After connecting to Hubitat, you may opt to send the data to Spruce App, and the data will associate with the exsisting Sensor in the App.*
   2. Go to your Hubitat hub on your PC, go to Devices and then *Discover Devices*, select Zigbee to start the search routine
   3. Tap the magnet to teh Spruce Sensor to start the pair process
   4. Hubitat should identify the Spruce Sensor and give your the option to name the sensor
