@@ -101,3 +101,8 @@ Install the User App called Spruce Connect and link your Spruce account to your 
      - Restart your Hubitat hub
      - Reset(step 1) the Spruce Sensor and retry the process
   
+**Current Revision**
+ - Version 1.3
+    - Initial release 11/2019
+    - Ported from SmartThings v1.2
+    - Streamlined for Hubitat

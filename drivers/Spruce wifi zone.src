@@ -56,11 +56,10 @@ def refresh(){
 }
 
 def generateEvent(Map results) {
-  log.debug results
+    log.debug "zone event: ${results}"
   
-  sendEvent(name: "${results.name}", value: "${results.value}", descriptionText: "${results.descriptionText}", isStateChange: true, displayed: "${results.displayed}")
-    
-  return null
+    sendEvent(name: "${results.name}", value: "${results.value}", descriptionText: "${results.descriptionText}", isStateChange: true, displayed: "${results.displayed}")    
+    return null
 }
 
 void on(){

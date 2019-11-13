@@ -21,9 +21,9 @@
  *
  * Hubitat specific based on v1.2
  *  v1.3 - 11/2019
-         - gateway must be labeled smartthings until a later date
+ *       - gateway must be labeled smartthings until a later date
  *       - pause() changed to hold(), hubitat throws error when pause command executed
- *
+ *       - update events to master
  *
  *
  */
@@ -698,24 +698,24 @@ def zone_state(){
         case "zon":            
             value = 'on'
             message = "on"
-            //if (ks != "0")
-            zone_on++
+            if (ks != "0") zone_on++
             if (zoneonoff[2].toInteger() != 0) message += " for ${Math.round(zoneonoff[2].toInteger()/60)} mins"            
             break
         case "zoff":
             value = 'off'
             message = "off"
-            //if (ks != "0")
-            zone_on--
+            if (ks != "0") zone_on--
             break        
     }
     
     if (zone_on < 0) zone_on = 0
+    if (ks == "0" && value == 'off') zone_on = 0
     log.debug "zone_on count: ${zone_on}"
     /*
     if (atomicState.zones_on == 0 && zone_on == 1) masterDevice.generateEvent([name: 'switch', value: "on", descriptionText: "${settings.controller} ${message}", isStateChange: true, displayed: true])
     else if (atomicState.zones_on >= 1 && zone_on == 0) masterDevice.generateEvent([name: 'switch', value: "off", descriptionText: "${settings.controller} ${message}", isStateChange: true, displayed: true])    
     */
+    
     atomicState.zones_on = zone_on
 	 
     if (zoneonoff[0] == "zoff" && sz >= 5){
@@ -723,25 +723,30 @@ def zone_state(){
         amp = [name: 'amp', value: "${zoneonoff[4]}", descriptionText: "${childDevice} valve check ${zoneonoff[4]}", isStateChange: true, displayed: true]
         childDevice.generateEvent(gpm)
         childDevice.generateEvent(amp)
-        
-        masterDevice.generateEvent(amp)
+                
         if ("${zoneonoff[3]}" != 'ok') note('Valve Fault', "${childDevice} gpm flow ${zoneonoff[3]}")
         if ("${zoneonoff[4]}" != 'ok') note('Valve Fault', "${childDevice} valve check ${zoneonoff[4]}")
     }
     
     def zoneResult = [name: name, value: value, descriptionText: "${childDevice} ${message}", isStateChange: true, displayed: true]
     
-    log.debug zoneResult
+    //log.debug zoneResult
     childDevice.generateEvent(zoneResult)
     
     def masterResult = [name: name, value: value, descriptionText: "${childDevice} ${message}", isStateChange: true, displayed: true]
-    if (ks == "0"){
-    	if (value == 'off') masterResult = [name: 'status', value: 'ready', descriptionText: "${childDevice} ${message}", isStateChange: true, displayed: true]
-    	else if (value == 'on') masterResult = [name: 'status', value: 'active', descriptionText: "${childDevice} ${message}", isStateChange: true, displayed: true]
-        masterDevice.generateEvent(masterResult)
+    //master switch
+    if (ks == "0"){    	
+        masterResult = [name: 'switch', value: value, descriptionText: "${childDevice} ${message}", isStateChange: true, displayed: true]
+        masterDevice.generateEvent(masterResult)        
+    }    
+    //multiple zones on
+    else if (ks != "0" && zone_on >= 1 && value == 'off'){
+    	masterResult = [name: 'zonehold', value: value, descriptionText: "${childDevice} ${message}", isStateChange: true, displayed: true]
+    	masterDevice.generateEvent(masterResult)
     }
+    //zone
     else if (ks != "0"){
-    	masterResult = [name: 'status', value: value, descriptionText: "${childDevice} ${message}", isStateChange: true, displayed: true]
+    	masterResult = [name: 'zone', value: value, descriptionText: "${childDevice} ${message}", isStateChange: true, displayed: true]
     	masterDevice.generateEvent(masterResult)
     }
     
@@ -886,11 +891,10 @@ def oauthInitUrl(){
     
 	def oauthParams = [
         response_type: "code",
-        scope: "app",
+        scope: "basic",
         client_id: atomicState.clientId,
         client_secret: atomicState.clientSecret,
         state: atomicState.oauthInitState,
-        location: "test/path",
         redirect_uri: getFullApiServerUrl() + "/oauth/callback?access_token=${atomicState.accessToken}"
     ]
 	def apiEndpoint = "https://app.spruceirrigation.com/oauth"
@@ -919,7 +923,7 @@ def callback() {
             body: [
                     grant_type: "authorization_code",
                     code : "${code}",
-                    scope : "app",
+                    scope : "basic",
                     client_id : atomicState.clientId,
                     client_secret: atomicState.clientSecret,
                     redirect_uri: getFullApiServerUrl() + "/oauth/callback?access_token=${atomicState.accessToken}"
