@@ -64,6 +64,10 @@ Drivers Code
 App Code
   - https://raw.githubusercontent.com/PlaidSystems/Spruce-Hubitat/master/apps/Spruce%20Connect.src
   - After importing and saving App code, enable OAUTH in the App. Select OAUTH from the upper right corner and Enable, then select Update to finish the install.
+  
+**Code Update Overview**
+
+Periodically this code may be updated. WHen changes are made, the revision will change and updating the code on your account will be necissary.  The exsisting app and drivers do not need to be removed.  Simply import the new files over the exsisting files following the same steps in the Code Install Overview.  No additional setup or changes should be required.
     
 **Install Overview**
 
