@@ -214,11 +214,12 @@ private Map getHumidityResult(value) {
 def getTemperature(value) {
     def celsius = (Integer.parseInt(value, 16).shortValue()/100)
     //log.debug "Report Temp $value : $celsius C"
-    //if(getTemperatureScale() == "C"){
-    //  return celsius
-    //} else {
+    //temp = (location.temperatureScale == "F") ? ((celsius * 1.8) + 32) : celsius
+    if(location.temperatureScale == "C"){
+        return celsius
+    } else {
         return celsiusToFahrenheit(celsius) as Integer
-    //}
+    }
 }
 
 private Map getTemperatureResult(value) {
