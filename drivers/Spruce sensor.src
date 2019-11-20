@@ -235,8 +235,8 @@ private Map getTemperatureResult(value) {
     return [
         name: 'temperature',
         value: value,
-        descriptionText: descriptionText,
-        unit: temperatureScale
+        unit: temperatureScale,
+        descriptionText: descriptionText
     ]
 }
 
