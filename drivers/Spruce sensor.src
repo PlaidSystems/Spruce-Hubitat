@@ -34,11 +34,12 @@
    - debugOff after 1 hour
    - use referenceTemp to calculate tempOffset from state.sensorTemp
    - move tempOffset attribute to state.tempOffset
-   - added importUrl
+   - addeed importUrl
  - Changed all rounding to use BigDecimal.ROUND_HALF_UP
  - Globally preserve 2 decimal points of temperature precision for both Celsius and Fahrenheit (was C only)
  - Added Notes preference/state variable for Location, Battery Change Date, etc.
  - Eliminate consecutive duplicate events
+ - removed debug refreshAttributes()
 
  */
  
@@ -58,7 +59,6 @@ metadata {
         attribute "update", "number"
         
         command "resetHumidity"
-        command "refreshAttributes"
         
         fingerprint profileId: "0104", inClusters: "0000,0001,0003,0402,0405", outClusters: "0003, 0019", manufacturer: "PLAID SYSTEMS", model: "PS-SPRZMS-01", deviceJoinName: "Spruce Sensor"
         fingerprint profileId: "0104", inClusters: "0000,0001,0003,0402,0405", outClusters: "0003, 0019", manufacturer: "PLAID SYSTEMS", model: "PS-SPRZMS-SLP1", deviceJoinName: "Spruce Sensor"
@@ -396,11 +396,6 @@ def refresh() {
         "he rattr 0x${device.deviceNetworkId} 1 0x405 0", "delay 500",    
         "he rattr 0x${device.deviceNetworkId} 1 1 0"
     ]    
-}
-
-def refreshAttributes() {
-    log.warn "Who is calling 'refreshAttributes?"
-    refresh()
 }
 
 //configure
