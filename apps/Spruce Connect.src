@@ -25,6 +25,9 @@
  *       - pause() changed to hold(), hubitat throws error when pause command executed
  *       - update events to master
  *
+ * BAB updates:
+ * v1.3bab - Create more descriptive device.labels for Controller, Zones and Spruce Pause devices
+ *         - (NOTE: Spruce wifi master now uses the Pause device.deviceNetworkId instead of device.name)
  *
  */
 
@@ -53,7 +56,7 @@ preferences (oauthPage: "authPage") {
 }
 
 def authPage(){
-    atomicState.versionText = "Spruce-Connect v1.3\nRelease: 11.2019"
+    atomicState.versionText = "Spruce-Connect v1.3BAB\nRelease: 12.2019"
     atomicState.clientId = "hubitat"
     atomicState.clientSecret = "6137b7f5efabd2f8a82f80c95f6dd50807426f72"
     
@@ -263,13 +266,19 @@ private void createChildDevices(){
     if(atomicState.zoneUpdate == true){
     	removeChildDevices()
     
-        //set Spruce Controller Name        
-        addChildDevice("plaidsystems", "Spruce wifi master", "${app.id}.0", null, [completedSetup: true, label: "${settings.controller}", isComponent: false, name: "wifi"])
+        //set Spruce Controller Name  
+		String controllerName = settings.controller
+		if (!controllerName.contains("Spruce")) controllerName = "Spruce " + controllerName
+		if (!controllerName.contains("Controller")) controllerName = controllerName + " Controller"
+        addChildDevice("plaidsystems", "Spruce wifi master", "${app.id}.0", null, [completedSetup: true, label: "${controllerName}", isComponent: false, name: "Spruce WiFi Controller"])
 
-        //Create children   
+        //Create children
+		String prefix = controllerName.endsWith(' Controller') ? controllerName - " Controller" : controllerName
         def tempZoneMap = atomicState.zoneMap
-        tempZoneMap.each{            
-            addChildDevice("plaidsystems", "Spruce wifi zone", "${app.id}.${it.key}", null, [completedSetup: true, label: "${tempZoneMap[it.key]['zone_name']}", isComponent: false, name: "Zone ${it.key}"])
+        tempZoneMap.each{
+			String label = "${prefix} ${it.key} - ${tempZoneMap[it.key]['zone_name']}"
+			String name = "${controllerName} Zone ${it.key}"
+            addChildDevice("plaidsystems", "Spruce wifi zone", "${app.id}.${it.key}", null, [completedSetup: true, label: label, isComponent: false, name: name])
         }
     }
     if (atomicState.manUpdate == true) child_schedules("${app.id}.0")
@@ -296,13 +305,19 @@ def child_schedules(dni){
 	def childDevice = childDevices.find{it.deviceNetworkId == dni}
     log.debug "${childDevice}"
     
-    if(settings.pause == true) childDevice.createScheduleDevices("${app.id}", 99, 0, "Spruce Pause")
+    // Pause Device for this Controller
+	if(settings.pause == true) {
+		String controllerName = settings.controller.displayName
+		if (!controllerName.startsWith("Spruce ")) controllerName = "Spruce " + controllerName
+		if (!controllerName.endsWith(" Controller")) controllerName = controllerName + " Controller"
+		childDevice.createScheduleDevices("${app.id}", 99, 0, "${controllerName} Pause")
+	}
     
     //add manual schedules
     def manualschs = atomicState.manualMap    
     manualschs.each{        
     	childDevice.createScheduleDevices("${app.id}", it.key, manualschs[it.key]["scheduleid"], manualschs[it.key]["name"])        
-        }
+    }
 }
 
 //add zone settings to child tile
