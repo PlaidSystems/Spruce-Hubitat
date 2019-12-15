@@ -40,6 +40,7 @@
  - Added Notes preference/state variable for Location, Battery Change Date, etc.
  - Eliminate consecutive duplicate events
  - removed debug refreshAttributes()
+ - stop creating new events for duplicate values recieved within 10 seconds of each other 
 
  */
  
@@ -58,7 +59,8 @@ metadata {
         attribute "interval", "number"
         attribute "update", "number"
         
-        command "resetHumidity"
+        command "resetHumidity", []
+        command "setInterval", [[name: "Measurement Interval*", type: "NUMBER", description: "Set sensor update frequency (minutes, 1-120)"]]
         
         fingerprint profileId: "0104", inClusters: "0000,0001,0003,0402,0405", outClusters: "0003, 0019", manufacturer: "PLAID SYSTEMS", model: "PS-SPRZMS-01", deviceJoinName: "Spruce Sensor"
         fingerprint profileId: "0104", inClusters: "0000,0001,0003,0402,0405", outClusters: "0003, 0019", manufacturer: "PLAID SYSTEMS", model: "PS-SPRZMS-SLP1", deviceJoinName: "Spruce Sensor"
@@ -147,7 +149,7 @@ def parse(String description) {
     if (device.latestValue('update') != 0){
 		result = poll()
 		def linkText = getLinkText(device)
-        sendEvent(name: 'update', value: 0, descriptionText: "${linkText} update interval is 0")
+        sendEvent(name: 'update', value: 0, descriptionText: "${linkText} update state is 0")
 		if (infoOn) log.info "${linkText} update state is 0"
     }    
         
@@ -268,8 +270,12 @@ private Map getHumidityResult(value) {
         sendEvent(name: 'minHum', value: value, unit: '%', descriptionText: "${linkText} soil moisture low is ${value}%")
     }    
     
-	if (device.currentValue('humidity') != value) {
-		// eliminate duplicate updates
+    def nowDate = now()
+    def lastDate = state.lastHumDate ?: 0
+    def currentValue = device.currentValue('humidity')
+    if ((currentValue != value) || ((nowDate - lastDate) > 10000)) {
+        // eliminate duplicate updates within 10 seconds of each other
+        state.lastHumDate = nowDate
 		return [
 			name: 'humidity',
 			value: value,
@@ -282,12 +288,11 @@ private Map getHumidityResult(value) {
 def getTemperature(value) {
     def celsius = (Integer.parseInt(value, 16).shortValue()/100.0)
 	if (debugOn) log.debug "Raw Temp ${value} : ${celsius}°C, ${celsiusToFahrenheit(celsius)}°F"
-    //temp = (location.temperatureScale == "F") ? ((celsius * 1.8) + 32) : celsius
     if(location.temperatureScale == "C"){
 		if (state.sensorTemp != celsius) state.sensorTemp = celsius
 		return celsius
     } else {
-		temp = roundIt(celsiusToFahrenheit(celsius), 2)	// Keep 2 digits of precision
+		def temp = roundIt(celsiusToFahrenheit(celsius), 2)	// Keep 2 digits of precision
 		if ((temp != null) && (state.sensorTemp != temp)) state.sensorTemp = temp
 		return temp
     }
@@ -316,8 +321,13 @@ private Map getTemperatureResult(value) {
     	def v = value
     	value = roundIt((v + offset), 2)
     }
-	if (device.currentValue('temperature') != value) {
-		// eliminate duplicate updates
+    
+	def nowDate = now()
+    def lastDate = state.lastTempDate ?: 0
+    def currentValue = device.currentValue('temperature')
+    if ((currentValue != value) || ((nowDate - lastDate) > 10000)) {
+		// eliminate duplicate updates within 10 seconds of each other
+        state.lastTempDate = nowDate
     	return [
         	name: 'temperature',
         	value: value,
@@ -340,7 +350,12 @@ private Map getBatteryResult(value) {
     percent = Math.max(0, Math.min(percent, 100.0))
 	result.value = roundIt(percent, 0)
     
-	if (device.currentValue('battery') != result.value) {
+	def nowDate = now()
+    def lastDate = state.lastBattDate ?: 0
+    def currentValue = device.currentValue('battery')
+    if ((currentValue != value) || ((nowDate - lastDate) > 10000)) {
+		// eliminate duplicate updates within 10 seconds of each other
+        state.lastBattDate = nowDate
 		if (percent < 10) result.descriptionText = "${linkText} battery is ${result.value}% - VERY LOW"		// Actually, it's probably dead at this point!
 		else if (percent < 33) result.descriptionText = "${linkText} battery is ${result.value}% - getting low"
 		else result.descriptionText = "${linkText} battery is ${result.value}% - OK"
@@ -359,6 +374,15 @@ def resetHumidity(){
 	if (infoOn) log.info descriptionText
     sendEvent(name: 'maxHum', value: maxHumValue, unit: '%', descriptionText: descriptionText)
 }   
+
+def setInterval(value) {
+    if (value) {
+        def newValue = roundIt(value,0).toInteger()
+        device.updateSetting('interval', newValue)
+        settings.interval = newValue
+        updated()
+    }
+}
 
 //poll
 def poll() {
