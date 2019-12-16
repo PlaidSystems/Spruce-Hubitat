@@ -40,7 +40,8 @@
  - Added Notes preference/state variable for Location, Battery Change Date, etc.
  - Eliminate consecutive duplicate events
  - removed debug refreshAttributes()
- - stop creating new events for duplicate values recieved within 10 seconds of each other 
+ - stop creating new events for duplicate values recieved within 10 seconds of each other
+ - added setInterval command, call update() and then poll()
 
  */
  
@@ -92,9 +93,9 @@ def initialize() {
 	if (debugOn) log.info "${linkText} debug logging enabled for 1 hour"
 	log.info "${linkText} updated, settings: ${settings}"
 	
-	String descriptionText = "${linkText} settings changed, will update sensor at next report. Measurement Interval set to ${interval} minutes, update state is 1"
+	String descriptionText = "${linkText} settings changed, will update sensor at next report. Measurement Interval set to ${settings.interval} minutes, update state is 1"
 	sendEvent(name: 'update', value: 1, descriptionText: descriptionText)
-	sendEvent(name: 'interval', value: interval, descriptionText: "${linkText} Measurement Interval updated")
+	sendEvent(name: 'interval', value: settings.interval, descriptionText: "${linkText} Measurement Interval updated")
 	if (infoOn) log.info descriptionText
 
 	// handle reference temperature / tempOffset automation
@@ -381,6 +382,7 @@ def setInterval(value) {
         device.updateSetting('interval', newValue)
         settings.interval = newValue
         updated()
+		poll()
     }
 }
 
@@ -427,9 +429,9 @@ def configure() {
     //set minReport = measurement in minutes
     def minReport = 10
     def maxReport = 610			// 10 hours and 10 minutes
-	if (interval != null) {
-        minReport = interval
-        maxReport = interval * 61
+	if (settings.interval != null) {
+        minReport = settings.interval
+        maxReport = settings.interval * 61
     }
 	
     if (debugOn) log.debug "zigbeeId ${device.zigbeeId}"
