@@ -108,12 +108,12 @@ Install the User App called Spruce Connect and link your Spruce account to your 
 **Current Revision**
  - Version 1.7bab
     - Create/Rename all controllers, zones and schedules when installed AND when updated
- 		   - Don't delete existing children - rename them if name or label changes in the Spruce Cloud
- 		   - (NOTE: Contyroller, Zone & Schedule names are defined by the Spruce Cloud App - local edits will be overwritten)
- 		   - Refresh sensors 30 seconds after initialization (resend all states to Spruce Cloud)
- 		   - Add 30-second timeout to all http calls
- 		   - Remove Pause device if not configured
- 		   - Remove unused/deleted zones & schedules after creating/renaming the current ones
+    - Don't delete existing children - rename them if name or label changes in the Spruce Cloud
+    - (NOTE: Contyroller, Zone & Schedule names are defined by the Spruce Cloud App - local edits will be overwritten)
+    - Refresh sensors 30 seconds after initialization (resend all states to Spruce Cloud)
+    - Add 30-second timeout to all http calls
+    - Remove Pause device if not configured
+    - Remove unused/deleted zones & schedules after creating/renaming the current ones
  
  - Version 1.3
     - Initial release 11/2019
