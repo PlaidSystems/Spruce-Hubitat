@@ -28,10 +28,26 @@
  -------11/2019 Updates--------
  -port to hubitat
 
+ -------12/2019 Updates--------
+ - Refactored to Hubitat "standards"
+   - debugOn, infoOn both on at install
+   - debugOff after 1 hour
+   - use referenceTemp to calculate tempOffset from state.sensorTemp
+   - move tempOffset attribute to state.tempOffset
+   - addeed importUrl
+ - Changed all rounding to use BigDecimal.ROUND_HALF_UP
+ - Globally preserve 2 decimal points of temperature precision for both Celsius and Fahrenheit (was C only)
+ - Added Notes preference/state variable for Location, Battery Change Date, etc.
+ - Eliminate consecutive duplicate events
+ - removed debug refreshAttributes()
+ - stop creating new events for duplicate values recieved within 10 seconds of each other
+ - added setInterval command, call update() and then poll()
+
  */
  
 metadata {
-    definition (name: "Spruce Sensor", namespace: "plaidsystems", author: "Plaid Systems") {
+    definition (name: "Spruce Sensor", namespace: "plaidsystems", author: "Plaid Systems",
+			    importUrl: "https://raw.githubusercontent.com/PlaidSystems/Spruce-Hubitat/master/drivers/Spruce%20sensor.src") {
         
         capability "Configuration"
         capability "Battery"
@@ -43,9 +59,9 @@ metadata {
         attribute "minHum", "string"
         attribute "interval", "number"
         attribute "update", "number"
-        attribute "tempOffset", "number"
         
-        command "resetHumidity"
+        command "resetHumidity", []
+        command "setInterval", [[name: "Measurement Interval*", type: "NUMBER", description: "Set sensor update frequency (minutes, 1-120)"]]
         
         fingerprint profileId: "0104", inClusters: "0000,0001,0003,0402,0405", outClusters: "0003, 0019", manufacturer: "PLAID SYSTEMS", model: "PS-SPRZMS-01", deviceJoinName: "Spruce Sensor"
         fingerprint profileId: "0104", inClusters: "0000,0001,0003,0402,0405", outClusters: "0003, 0019", manufacturer: "PLAID SYSTEMS", model: "PS-SPRZMS-SLP1", deviceJoinName: "Spruce Sensor"
@@ -53,26 +69,69 @@ metadata {
     }
 
     preferences {
-        input "tempOffset", "number", title: "Temperature Offset", description: "Set temperature offset by this many degrees", range: "*..*", displayDuringSetup: false
-        input "interval", "number", title: "Measurement Interval", description: "Set how often you would like to check soil moisture in minutes, 1-120 minutes (default: 10 minutes)", range: "1..120", defaultValue: 10, displayDuringSetup: false
+		input "referenceTemp", "decimal", title: "<b>Reference temperature</b>", description: "Enter current reference temperature reading", displayDuringSetup: false
+        input "interval", "number", title: "<b>Measurement Interval</b>", description: "Set how often you would like to check soil moisture in minutes, 1-120 minutes (default: 10 minutes)", range: "1..120", defaultValue: 10, displayDuringSetup: false
+		input "notes", "text", title: "<b>Notes</b>", description: "Sensor location, battery change date, zone assignment, etc.", displayDuringSetup: false
+		input "debugOn", "bool", title: "<b>Enable debug logging for 1 hour</b>", defaultValue: true
+		input "infoOn", "bool", title: "<b>Enable descriptionText logging?</b>", defaultValue: true
       }    
 }
 
 def installed(){
-    
+    initialize()
 }
 
 //when device preferences are changed
-def updated(){  
-    log.debug "device updated"    
-    sendEvent(name: 'update', value: 1, descriptionText: "Settings changed and will update at next report. Measure interval set to ${interval} mins")    
-    sendEvent(name: 'interval', value: interval, descriptionText: "Interval updated")
-    sendEvent(name: 'tempOffset', value: tempOffset, descriptionText: "tempOffset updated")
+def updated(){
+	unschedule()
+	initialize()
+}
+
+def initialize() {
+	def linkText = getLinkText(device)
+	if (infoOn) log.info "${linkText} descriptionText logging enabled"
+	if (debugOn) log.info "${linkText} debug logging enabled for 1 hour"
+	log.info "${linkText} updated, settings: ${settings}"
+	
+	String descriptionText = "${linkText} settings changed, will update sensor at next report. Measurement Interval set to ${settings.interval} minutes, update state is 1"
+	sendEvent(name: 'update', value: 1, descriptionText: descriptionText)
+	sendEvent(name: 'interval', value: settings.interval, descriptionText: "${linkText} Measurement Interval updated")
+	if (infoOn) log.info descriptionText
+
+	// handle reference temperature / tempOffset automation
+	if (settings.referenceTemp != null) {
+		if (state.sensorTemp) {
+			state.sensorTemp = roundIt(state.sensorTemp, 2)
+			state.tempOffset = roundIt(referenceTemp - state.sensorTemp, 2)
+			settings.referenceTemp = null
+			device.clearSetting('referenceTemp')
+			if (debugOn) log.debug "sensorTemp: ${state.sensorTemp}, referenceTemp: ${referenceTemp}, offset: ${state.tempOffset}"
+			sendEvent(getTemperatureResult(state.sensorTemp))
+		} // else, preserve settings.referenceTemp, state.tempOffset will be calculate on the next temperature report
+	} else if (state.tempOffset == null) {
+		// Initialize the offset, converting from the old attribute-based approach if necessary
+		def offset = device.currentValue('tempOffset')
+		if (offset != null) {
+			log.info "${linkText} One-time tempOffset conversion completed"
+			sendEvent(name: 'tempOffset', value: null, descriptionText: "One-time tempOffset conversion completed")
+			device.clearSetting('tempOffset')
+			state.tempOffset = roundIt(offset, 2)
+			if (state.sensorTemp) sendEvent(getTemperatureResult(state.sensorTemp))
+		} else {
+			state.tempOffset = 0.0
+		}
+	}
+	
+	state.Notes = notes
+	if (debugOn) {
+		// turn off debug logging after 1 hour
+		runIn(3600, debugOff, [overwrite: true])
+	}
 }
 
 //parse events
 def parse(String description) {
-    log.debug "Parse description $description"      
+    if (debugOn) log.debug "Parse description $description"      
     
     Map map = [:]    
    
@@ -89,15 +148,15 @@ def parse(String description) {
     
     //check in configuration change    
     if (device.latestValue('update') != 0){
-        sendEvent(name: 'update', value: 0, descriptionText: "Update interval")
-        result = poll()
+		result = poll()
+		def linkText = getLinkText(device)
+        sendEvent(name: 'update', value: 0, descriptionText: "${linkText} update state is 0")
+		if (infoOn) log.info "${linkText} update state is 0"
     }    
         
-    log.debug "parse: result: $result"
+    if (debugOn) log.debug "parse: result: $result"
     return result    
 }
-
-
 
 private Map parseCatchAllMessage(String description) {
     Map resultMap = [:]
@@ -106,13 +165,14 @@ private Map parseCatchAllMessage(String description) {
     def descMap = zigbee.parse(description)
     def descMapParse = zigbee.parseDescriptionAsMap(description)
     
-    log.debug "parseCatchAllMessage: descMapParse -> ${descMapParse}"
-    log.debug "parseCatchAllMessage: descMap -> ${descMap}"
+    if (debugOn) log.debug "parseCatchAllMessage: descMapParse -> ${descMapParse}"
+    if (debugOn) log.debug "parseCatchAllMessage: descMap -> ${descMap}"
     
     //check humidity configuration is complete
     if (descMap.command == 0x07 && descMap.clusterId == 0x0405){
-        sendEvent(name: 'update', value: 0, descriptionText: "Update interval")
-        log.debug "config complete"
+		sendEvent(name: 'update', value: 0, descriptionText: "${linkText} update state is 0")
+		if (infoOn) log.info "${linkText} update state is 0"
+        if (debugOn) log.debug "config complete"
     }
     else if (descMap.command == 0x0001){    
         def hexString = "${hex(descMap.data[5])}" + "${hex(descMap.data[4])}"
@@ -123,14 +183,14 @@ private Map parseCatchAllMessage(String description) {
             resultMap = getTemperatureResult(value)    
         }
         else if (descMap.clusterId == 0x0405){
-            def value = Math.round(new BigDecimal(intString / 100)).toString()
-            resultMap = getHumidityResult(value)
-
+            def value = roundIt(new BigDecimal(intString / 100), 0)
+            if (value != null) resultMap = getHumidityResult(value)
         }
-        else return null
+        else return [:]
     }
-    else return null 
-    
+    else return [:] 
+	
+    if (infoOn && resultMap?.descriptionText) log.info resultMap.descriptionText
     return resultMap
 }    
     
@@ -138,23 +198,29 @@ private Map parseReportAttributeMessage(String description) {
     def descMap = zigbee.parseDescriptionAsMap(description)
     def descMapParse = zigbee.parse(description)
     
-    log.debug "Desc Map: $descMap"
-    log.debug "Report Attributes"
+    if (debugOn) log.debug "Desc Map: $descMap"
+    if (debugOn) log.debug "Report Attributes"
  
     Map resultMap = [:]
     if (descMap.cluster == "0402" && descMap.attrId == "0000") {
         def value = getTemperature(descMap.value)
         resultMap = getTemperatureResult(value)    
-    }
-    if (descMap.cluster == "0405" && descMap.attrId == "0000") {
-        def intString = Integer.parseInt(descMap.value, 16)    
-        def value = Math.round(new BigDecimal(intString / 100)).toString()
-        resultMap = getHumidityResult(value)        
-    }
-    
-    if (descMap.cluster == "0001" && descMap.attrId == "0000") {        
+    } 
+	else if (descMap.cluster == "0405" && descMap.attrId == "0000") {
+        def intString = Integer.parseInt(descMap.value, 16)
+		if (debugOn) log.debug "Raw Humidity: ${intString}"
+		def value = roundIt(new BigDecimal(intString / 100.0), 0)
+		if (value != null) resultMap = getHumidityResult(value)        
+    } 
+	else if (descMap.cluster == "0001" && descMap.attrId == "0000") {        
         resultMap = getBatteryResult(descMap.value)
-    }    
+    }
+	
+	if (infoOn && resultMap?.descriptionText) {
+		if ((resultMap.name == 'battery') && (resultMap.value < 10)) {
+			log.warn resultMap.descriptionText
+		} else log.info resultMap.descriptionText
+	}
     return resultMap
 }
 
@@ -168,20 +234,24 @@ def parseDescriptionAsMap(description) {
 private Map parseCustomMessage(String description) {
     Map resultMap = [:]  
         
-    log.debug "parseCustom"
+    if (debugOn) log.debug "parseCustom"
     if (description?.startsWith('temperature: ')) {
-        def value = zigbee.parseHATemperatureValue(description, "temperature: ", getTemperatureScale())
+        def value = roundIt(zigbee.parseHATemperatureValue(description, "temperature: ", getTemperatureScale()), 2)	// maintain 2 digits of precision
+		if (debugOn) log.debug "Custom raw temperature: ${value}"
         resultMap = getTemperatureResult(value)
     }
     else if (description?.startsWith('humidity: ')) {
         def pct = (description - "humidity: " - "%").trim()
+		if (debugOn) log.debug "Custom raw humidity: ${pct}"
         if (pct.isNumber()) {           
-            def value = Math.round(new BigDecimal(pct)).toString()
+			def value = roundIt(pct, 0)
             resultMap = getHumidityResult(value)
         } else {
             log.error "invalid humidity: ${pct}"
         }    
     }
+	
+	if (infoOn && resultMap?.descriptionText) log.info resultMap.descriptionText
     return resultMap
 }
  
@@ -191,57 +261,85 @@ private Map getHumidityResult(value) {
     def minHumValue = 0
     if (device.currentValue("maxHum") != null) maxHumValue = device.currentValue("maxHum").toInteger()
     if (device.currentValue("minHum") != null) minHumValue = device.currentValue("minHum").toInteger()
-    log.debug "Humidity max: ${maxHumValue} min: ${minHumValue}"
-    def compare = value.toInteger()
+	if (debugOn) log.debug "Humidity: ${value}, max: ${maxHumValue} min: ${minHumValue}"
+    def compare = roundIt(value, 0) // value.toInteger()
     
     if (compare > maxHumValue) {
         sendEvent(name: 'maxHum', value: value, unit: '%', descriptionText: "${linkText} soil moisture high is ${value}%")
-        }
+    }
     else if (((compare < minHumValue) || (minHumValue <= 2)) && (compare != 0)) {
         sendEvent(name: 'minHum', value: value, unit: '%', descriptionText: "${linkText} soil moisture low is ${value}%")
-        }    
+    }    
     
-    return [
-        name: 'humidity',
-        value: value,
-        unit: '%',
-        descriptionText: "${linkText} soil moisture is ${value}%"
-    ]
+    def nowDate = now()
+    def lastDate = state.lastHumDate ?: 0
+    def currentValue = device.currentValue('humidity')
+    if ((currentValue != value) || ((nowDate - lastDate) > 10000)) {
+        // eliminate duplicate updates within 10 seconds of each other
+        state.lastHumDate = nowDate
+		return [
+			name: 'humidity',
+			value: value,
+			unit: '%',
+			descriptionText: "${linkText} soil moisture is ${value}%"
+		]
+	} else return [:]
 }
 
-
-
 def getTemperature(value) {
-    def celsius = (Integer.parseInt(value, 16).shortValue()/100)
-    //log.debug "Report Temp $value : $celsius C"
-    //temp = (location.temperatureScale == "F") ? ((celsius * 1.8) + 32) : celsius
+    def celsius = (Integer.parseInt(value, 16).shortValue()/100.0)
+	if (debugOn) log.debug "Raw Temp ${value} : ${celsius}°C, ${celsiusToFahrenheit(celsius)}°F"
     if(location.temperatureScale == "C"){
-        return celsius
+		if (state.sensorTemp != celsius) state.sensorTemp = celsius
+		return celsius
     } else {
-        return celsiusToFahrenheit(celsius) as Integer
+		def temp = roundIt(celsiusToFahrenheit(celsius), 2)	// Keep 2 digits of precision
+		if ((temp != null) && (state.sensorTemp != temp)) state.sensorTemp = temp
+		return temp
     }
 }
 
 private Map getTemperatureResult(value) {
-    log.debug "Temperature: $value"
+	if (debugOn) log.debug "getTemperatureResult(${value})"
     def linkText = getLinkText(device)
-        
-    if (tempOffset) {
-        def offset = tempOffset as int
-        def v = value as int
-        value = v + offset        
+	
+	if ((state.sensorTemp == null) || (state.sensorTemp != value)) state.sensorTemp = value
+	
+	if (settings.referenceTemp != null) {
+		state.tempOffset = roundIt((referenceTemp - value), 2)
+		settings.referenceTemp = null
+		device.clearSetting('referenceTemp')
+		if (debugOn) log.debug "sensorTemp: ${value}, referenceTemp: ${referenceTemp}, offset: ${state.tempOffset}"
+	}
+	
+	def offset = state.tempOffset
+	if (offset == null) {
+		def temp = device.currentValue('tempOffset')	// convert the old attribute to the new state variable
+		offset = (temp != null) ? temp : 0.0
+		state.tempOffset = offset
+	}
+    if (offset != 0.0) {
+    	def v = value
+    	value = roundIt((v + offset), 2)
     }
-    def descriptionText = "${linkText} is ${value}°${temperatureScale}"
-    return [
-        name: 'temperature',
-        value: value,
-        unit: temperatureScale,
-        descriptionText: descriptionText
-    ]
+    
+	def nowDate = now()
+    def lastDate = state.lastTempDate ?: 0
+    def currentValue = device.currentValue('temperature')
+    if ((currentValue != value) || ((nowDate - lastDate) > 10000)) {
+		// eliminate duplicate updates within 10 seconds of each other
+        state.lastTempDate = nowDate
+    	return [
+        	name: 'temperature',
+        	value: value,
+        	unit: temperatureScale,
+        	descriptionText: "${linkText} temperature is ${value}°${temperatureScale}"
+    	]
+	} else return [:]
 }
 
 private Map getBatteryResult(value) {
-    log.debug 'Battery'
+    if (debugOn) log.debug 'Battery'
     def linkText = getLinkText(device)
         
     def result = [
@@ -251,38 +349,58 @@ private Map getBatteryResult(value) {
     def min = 2500   
     def percent = ((Integer.parseInt(value, 16) - min) / 5)
     percent = Math.max(0, Math.min(percent, 100.0))
-    result.value = Math.round(percent)
+	result.value = roundIt(percent, 0)
     
-    def descriptionText
-    if (percent < 10) result.descriptionText = "${linkText} battery is getting low $percent %."
-    else result.descriptionText = "${linkText} battery is ${result.value}%"
-    
-    return result
+	def nowDate = now()
+    def lastDate = state.lastBattDate ?: 0
+    def currentValue = device.currentValue('battery')
+    if ((currentValue != value) || ((nowDate - lastDate) > 10000)) {
+		// eliminate duplicate updates within 10 seconds of each other
+        state.lastBattDate = nowDate
+		if (percent < 10) result.descriptionText = "${linkText} battery is ${result.value}% - VERY LOW"		// Actually, it's probably dead at this point!
+		else if (percent < 33) result.descriptionText = "${linkText} battery is ${result.value}% - getting low"
+		else result.descriptionText = "${linkText} battery is ${result.value}% - OK"
+		return result
+	} else return [:]
 }
 
 def resetHumidity(){
     def linkText = getLinkText(device)
     def minHumValue = 0
     def maxHumValue = 0
-    sendEvent(name: 'minHum', value: minHumValue, unit: '%', descriptionText: "${linkText} min soil moisture reset to ${minHumValue}%")
-    sendEvent(name: 'maxHum', value: maxHumValue, unit: '%', descriptionText: "${linkText} max soil moisture reset to ${maxHumValue}%")
+	String descriptionText = "${linkText} min soil moisture reset to ${minHumValue}%"
+    sendEvent(name: 'minHum', value: minHumValue, unit: '%', descriptionText: descriptionText)
+	if (infoOn) log.info descriptionText
+	descriptionText = "${linkText} max soil moisture reset to ${maxHumValue}%"
+	if (infoOn) log.info descriptionText
+    sendEvent(name: 'maxHum', value: maxHumValue, unit: '%', descriptionText: descriptionText)
 }   
+
+def setInterval(value) {
+    if (value) {
+        def newValue = roundIt(value,0).toInteger()
+        device.updateSetting('interval', newValue)
+        settings.interval = newValue
+        updated()
+		poll()
+    }
+}
 
 //poll
 def poll() {
-    log.debug "poll called"
+    if (debugOn) log.debug "poll called"
     List cmds = []
     
     if (device.latestValue('update') == 2) cmds += configure()
         
     cmds += intervalUpdate()
-    log.debug "commands $cmds"
+    if (debugOn) log.debug "commands $cmds"
     return cmds?.collect { new hubitat.device.HubAction(it) }    
 }
 
 //update intervals
 def intervalUpdate(){
-    log.debug "intervalUpdate"
+    if (debugOn) log.debug "intervalUpdate"
     def minReport = 10
     def maxReport = 610
     if (interval != null) {
@@ -298,7 +416,7 @@ def intervalUpdate(){
 }
 
 def refresh() {
-    log.debug "refresh"
+    if (debugOn) log.debug "refresh"
     [
         "he rattr 0x${device.deviceNetworkId} 1 0x402 0", "delay 500",
         "he rattr 0x${device.deviceNetworkId} 1 0x405 0", "delay 500",    
@@ -310,28 +428,51 @@ def refresh() {
 def configure() {
     //set minReport = measurement in minutes
     def minReport = 10
-    def maxReport = 610
-    log.debug "zigbeeId ${device.zigbeeId}"
-    if (!device.zigbeeId) sendEvent(name: 'update', value: 2, descriptionText: "Device Zigbee Id not found, remove and attempt to rejoin device")
-    else sendEvent(name: 'update',value: 0, descriptionText: "Configuration initialized")
-    
+    def maxReport = 610			// 10 hours and 10 minutes
+	if (settings.interval != null) {
+        minReport = settings.interval
+        maxReport = settings.interval * 61
+    }
+	
+    if (debugOn) log.debug "zigbeeId ${device.zigbeeId}"
+	
+	def linkText = getLinkText(device)
+	String descriptionText = ""
+	if (!device.zigbeeId) { 
+		descriptionText = "${linkText} sensor's Zigbee Id not found, please remove and attempt to rejoin this sensor" 
+		log.warn descriptionText
+		sendEvent(name: 'update', value: 0, descriptionText: descriptionText)
+		//return [:]		// can we still send the config commands below if we don't know the zigbeeId???
+	}
+	else { 
+		descriptionText = "${linkText} configuration initialized" 
+    	if (infoOn) log.info descriptionText + ", update state is 0"
+		sendEvent(name: 'update', value: 0, descriptionText: descriptionText)
+	}
+	
+	// this will take about 10 seconds, all-in
     [
         "zdo bind 0x${device.deviceNetworkId} 1 1 0x402 {${device.zigbeeId}} {}", "delay 1000",
         "zdo bind 0x${device.deviceNetworkId} 1 1 0x405 {${device.zigbeeId}} {}", "delay 1000",                
         "zdo bind 0x${device.deviceNetworkId} 1 1 1 {${device.zigbeeId}} {}", "delay 1000",
         
         //temperature
-        "zcl global send-me-a-report 0x402 0x0000 0x29 1 0 {3200}",
+        "zcl global send-me-a-report 0x402 0x0000 0x29 1 0 {3200}", "delay 1000",
         "send 0x${device.deviceNetworkId} 1 1", "delay 1000",
         
         //min = soil measure interval
-        "zcl global send-me-a-report 0x405 0x0000 0x21 $minReport $maxReport {6400}",        
+        "zcl global send-me-a-report 0x405 0x0000 0x21 $minReport $maxReport {6400}", "delay 1000",        
         "send 0x${device.deviceNetworkId} 1 1", "delay 1000",       
      
         //min = battery measure interval  1 = 1 hour     
-        "zcl global send-me-a-report 1 0x0000 0x21 0x0C 0 {0500}",
+        "zcl global send-me-a-report 1 0x0000 0x21 0x0C 0 {0500}", "delay 1000",
         "send 0x${device.deviceNetworkId} 1 1", "delay 1000"
     ] + refresh()
+}
+			  
+def debugOff(){
+    log.warn "debug logging disabled..."
+    device.updateSetting("debugOn",[value:"false",type:"bool"])
 }
 
 private hex(value) {
@@ -354,4 +495,10 @@ private byte[] reverseArray(byte[] array) {
         i++;
     }
     return array
+}
+def roundIt( value, decimals=0 ) {
+	return (value == null) ? null : value.toBigDecimal().setScale(decimals, BigDecimal.ROUND_HALF_UP) 
+}
+def roundIt( BigDecimal value, decimals=0 ) {
+	return (value == null) ? null : value.setScale(decimals, BigDecimal.ROUND_HALF_UP) 
 }

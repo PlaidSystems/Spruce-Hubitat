@@ -17,12 +17,22 @@
  * Manual Schedule tiles
  * port to Hubitat
  *
+--------------12-2019 update by BAB--------
+ * Store & use pause device's deviceNetworkId instead of using device.label ("Spruce Pause")
+ *     (This allows users to change the name/label of the pause device without breaking things)
+ * Optimizations
+--------------06-2020 update by BAB--------
+ * No longer assumes childred have been deleted before creating new ones. Instead, will
+ * rename existing children if they already exist with different names. Also added removeScheduleDevice()
+ * so that parent can delete/remove unused Pause and/or other schedules individually
  */
  
  metadata {
 	definition (name: 'Spruce wifi master', namespace: 'plaidsystems', author: 'Plaid Systems') {
 		capability "Switch"
-        capability "Switch Level"        
+        capability "Switch Level" 
+        capability "Sensor"
+        capability "Actuator"
         
         attribute "pause", "string"
         attribute "contact", "string"
@@ -37,9 +47,9 @@
 	}
     preferences {
     	input (description: "Use Level to set zone watering time. This setting does not effect scheduled water times.",
-            displayDuringSetup: false, type: "paragraph", element: "paragraph", title: "Set Level")
+            displayDuringSetup: false, type: "paragraph", element: "paragraph", title: "<b>Set Level</b>")
         input (description: "Use Update Settings to refresh the manual schedule child device list or Pause Control, update other zone settings from Spruce App.", 
-            displayDuringSetup: false, type: "paragraph", element: "paragraph", title: "Update Settings")
+            displayDuringSetup: false, type: "paragraph", element: "paragraph", title: "<b>Update Settings</b>")
     }
 }
 
@@ -48,6 +58,8 @@ def installed(){
     setPause(off)
     setRain(off)
     sendEvent(name: "switch", value: "off", isStateChange: true)    //initialize switch to off
+	sendEvent(name: "status", value: "idle", isStateChange: true)
+	sendEvent(name: "message", value: "controller initialized", isStateChange: true)
     
     updateChildren()
 }
@@ -55,37 +67,79 @@ def installed(){
 //updateSettings command
 void updateSettings(){	   
     parent.getChildren()
+	sendEvent(name: "message", value: "controller settings updated", isStateChange: true)
 }
 
 def updateChildren(){
 	log.debug "updateChildren master"
     
-	//get and delete children avoids duplicate children    
-    try {
-    	def children = getChildDevices()
-        children.each{
-        log.debug it
-            if ("${it}" == "Spruce Pause") log.debug "found it"
-        	deleteChildDevice(it.deviceNetworkId)
-        }
-    }
-    catch (e) {
-    	log.debug "no children"
-        }
-        
+	//get and delete children avoids duplicate children - NO LONGER USED AS OF 06-2020
+	if (false) {
+		try {
+			def children = getChildDevices()
+			children.each{
+				log.debug it
+				//if ("${it}" == "Spruce Pause") log.debug "found it"
+				if (it.deviceNetworkId == state.pauseDeviceNetworkId) log.debug "found it"
+				deleteChildDevice(it.deviceNetworkId)
+			}
+		}
+		catch (e) {
+			log.debug "no children"
+			}
+	}
 	parent.child_schedules(device.deviceNetworkId)
 }
 
 //add schedule child devices
 void createScheduleDevices(id, i, schedule, schName){
-	log.debug "master child devices"
-    log.debug schedule    
-    log.debug "${id}.${i}"
+	String childDNI = "${id}.${i}"
+    if (i == 99) state.pauseDeviceNetworkId = childDNI // The pause device is always schedule #99
     
     //add children
-    addChildDevice("plaidsystems", "Spruce wifi schedule", "${id}.${i}", [completedSetup: true, label: "${schName}", isComponent: true, name: "schedule${i}"])
+	def existingChild = getChildDevice(childDNI) // getChildDevices().find(it.deviceNetworkId == childDNI)
+	String name = "schedule${i}"
+	if (!existingChild) {
+		log.info "Adding schedule ${schName} / ${schedule} (${childDNI})"
+		addChildDevice("plaidsystems", "Spruce wifi schedule", childDNI, [completedSetup: true, label: "${schName}", isComponent: true, name: name])
+	} else {
+		boolean renamed = false
+		if (existingChild.name != name) {
+			existingChild.name = name
+			renamed = true
+		}
+		if (existingChild.label != schName) {
+			existingChild.label = schName
+			renamed = true
+		}
+		if (renamed) {
+			log.info "Renamed schedule ${schName} / ${schedule} (${childDNI})"
+		} else {
+			log.info "Schedule ${schName} / ${schedule} (${childDNI}) already exists"
+		}
+			
+	}
 }
 
+//remove an unused schedule device
+void removeScheduleDevice(id, i){
+	String childDNI = "${id}.${i}"
+	def existingChild = getChildDevice(childDNI)	// getChildDevices().find(it.deviceNetworkId == childDNI)
+	if (existingChild) {
+		deleteChildDevice(childDNI)
+		if (i == 99) state.pauseDeviceNetworkId = null // The pause device is always schedule #99
+		log.debug "Removed schedule ${existingChild.label} / ${existingChild.name} (${childDNI})"
+	} else {
+		log.debug "Schedule ${childDNI} does not exist (removing)"
+	}
+}
+//removes ALL schedule devices
+void removeScheduleDevices() {
+	childDevices?.each {
+		log.debug "Removed schedule ${it.label} / ${it.name} (${it.deviceNetworkId})"
+		deleteChildDevice(it.deviceNetworkId)
+	}
+}
 
 def generateEvent(Map results) {    
     //log.debug "master status: ${device.status}"
@@ -95,35 +149,36 @@ def generateEvent(Map results) {
     if (results.value == 'on' && device.currentValue('switch') != "on"){            
         sendEvent(name: "switch", value: 'on', descriptionText: "${results.descriptionText}", displayed: true)
     }    
-    
+    switch(results.name) {
     //master switch
-    if (results.name == "switch"){
-        if (results.value == 'on') sendEvent(name: "status", value: 'schedule active', descriptionText: "${results.descriptionText}", displayed: false)
-        else if (results.value == 'off') off()
-    }
+        case "switch":
+            if (results.value == 'on') sendEvent(name: "status", value: 'schedule active', descriptionText: "${results.descriptionText}", displayed: false)
+            else if (results.value == 'off') off()
+            break
     //zone status
-    else if (results.name == 'zone'){        
-        if (results.value == 'on' && device.currentValue('switch') != 'on') sendEvent(name: "status", value: 'active', descriptionText: "${results.descriptionText}", displayed: true)
-        else if (results.value == 'off' && device.currentValue('status') == 'active') off()
-    }
+        case 'zone':       
+            if (results.value == 'on' && device.currentValue('switch') != 'on') sendEvent(name: "status", value: 'active', descriptionText: "${results.descriptionText}", displayed: true)
+            else if (results.value == 'off' && device.currentValue('status') == 'active') off()
+            break
     //zonehold status
-    else if (results.name == 'zonehold'){
-        if (results.value == 'on' && device.currentValue('switch') != 'on') sendEvent(name: "status", value: 'active', descriptionText: "${results.descriptionText}", displayed: true)
+        case 'zonehold':
+            if (results.value == 'on' && device.currentValue('switch') != 'on') sendEvent(name: "status", value: 'active', descriptionText: "${results.descriptionText}", displayed: true)
+            break
+	//rain sensor     
+        case "rainsensor":
+            sendEvent(name: "${results.name}", value: "${results.value}", descriptionText: "${results.descriptionText}", displayed: true)
+            break
+    //pause
+        case "pause":
+            sendEvent(name: "${results.name}", value: "${results.value}", descriptionText: "${results.descriptionText}", displayed: true)
+            if(results.value == 'on' && device.currentValue('status') == 'schedule active') sendEvent(name: "status", value: "pause", displayed: false)
+            else if(results.value == 'off') sendEvent(name: "status", value: "schedule active", displayed: false)
+            break
+    //contact
+        case "contact":
+            sendEvent(name: "${results.name}", value: "${results.value}", descriptionText: "${results.descriptionText}", displayed: true)
+            break
     }
-	//all events     
-    if (results.name == "rainsensor"){
-        sendEvent(name: "${results.name}", value: "${results.value}", descriptionText: "${results.descriptionText}", displayed: true)
-    }
-    if (results.name == "pause"){
-        sendEvent(name: "${results.name}", value: "${results.value}", descriptionText: "${results.descriptionText}", displayed: true)
-        if(results.value == 'on' && device.currentValue('status') == 'schedule active')sendEvent(name: "status", value: "pause", displayed: false)
-        
-        if(results.value == 'off')sendEvent(name: "status", value: "schedule active", displayed: false)
-    }    
-    if (results.name == "contact"){
-        sendEvent(name: "${results.name}", value: "${results.value}", descriptionText: "${results.descriptionText}", displayed: true)
-    }
-    
     sendEvent(name: "message", value: "${results.descriptionText}", displayed: false)
 }
 
@@ -149,27 +204,30 @@ def setPause(value) {
 //************* Commands to/from pause and schedule children *******************
 def zoneon(dni) {	
     log.debug "zoneon ${dni}"
-   	def childDevice = childDevices.find{it.deviceNetworkId == dni}    
+   	def childDevice = getChildDevice(dni) // childDevices.find{it.deviceNetworkId == dni}    
     
-    if (childDevice.currentValue('switch') != 'on'){
+    if (childDevice?.currentValue('switch') != 'on'){
     	log.debug "master zoneon ${childDevice} ${dni} on"
     	def result = [name: 'switch', value: 'on', descriptionText: "zone is on", isStateChange: true, displayed: true]    
     	childDevice.sendEvent(result)
         
-        if("${childDevice}" != "Spruce Pause") parent.scheduleOnOff(childDevice, 1)
+        //if("${childDevice}" != "Spruce Pause") parent.scheduleOnOff(childDevice, 1)
+        if(childDevice.deviceNetworkId != state.pauseDeviceNetworkId) parent.scheduleOnOff(childDevice, 1)
     	else pause()
     }
 }
 
 def zoneoff(dni) {    
-    def childDevice = childDevices.find{it.deviceNetworkId == dni}
+	log.debug "zoneoff ${dni}"
+    def childDevice = getChildDevice(dni)	// childDevices.find{it.deviceNetworkId == dni}
     
-    if (childDevice.currentValue('switch') != 'off'){
+    if (childDevice?.currentValue('switch') != 'off'){
     	log.debug "master zoneoff ${childDevice} off"
     	def result = [name: 'switch', value: 'off', descriptionText: "zone is off", isStateChange: true, displayed: true]
     	childDevice.sendEvent(result)
         
-        if("${childDevice}" != "Spruce Pause") parent.scheduleOnOff(childDevice, 0)
+        //if("${childDevice}" != "Spruce Pause") parent.scheduleOnOff(childDevice, 0)
+        if(childDevice.deviceNetworkId != state.pauseDeviceNetworkId) parent.scheduleOnOff(childDevice, 0)
     	else resume()
     }
 }
@@ -187,7 +245,7 @@ void on(){
 void off(){
     log.debug "---------------switch off"
     sendEvent(name: "switch", value: 'off', descriptionText: "${device.label} is off", displayed: false)
-    sendEvent(name: "status", value: 'Idle', descriptionText: "${device.label} is off", displayed: true)
+    sendEvent(name: "status", value: 'idle', descriptionText: "${device.label} is off", displayed: true)
     allSchedulesOff()
     parent.send_stop()
 }
@@ -202,10 +260,11 @@ void allSchedulesOff(){
 
 //pause command
 void pause(){    
-    def childDevice = childDevices.find{"${it}" == "Spruce Pause"}
+    //def childDevice = childDevices.find{"${it}" == "Spruce Pause"}
+    def childDevice = state.pauseDeviceNetworkId ? getChildDevice(state.pauseDeviceNetworkId) : null // childDevices.find{it.deviceNetworkId == state.pauseDeviceNetworkId}
     
     //pause only allowed with schedules
-    if(device.currentValue('status') == 'schedule active'){
+    if(device.currentValue('status').contains('active')){
         childDevice?.sendEvent(name: "switch", value: 'on', descriptionText: "Pause", isStateChange: true, displayed: true)    
         parent.send_pause()
     }
@@ -214,7 +273,8 @@ void pause(){
 
 //resume command
 void resume(){
-    def childDevice = childDevices.find{"${it}" == "Spruce Pause"}
+    //def childDevice = childDevices.find{"${it}" == "Spruce Pause"}
+    def childDevice = state.pauseDeviceNetworkId ? getChildDevice(state.pauseDeviceNetworkId) : null // childDevices.find{it.deviceNetworkId == state.pauseDeviceNetworkId}
     childDevice?.sendEvent(name: "switch", value: 'off', descriptionText: "Resume", isStateChange: true, displayed: true)
     
     parent.send_resume()

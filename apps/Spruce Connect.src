@@ -25,6 +25,20 @@
  *       - pause() changed to hold(), hubitat throws error when pause command executed
  *       - update events to master
  *
+ * BAB updates:
+ * v1.3bab - Create more descriptive device.labels for Controller, Zones and Spruce Pause devices
+ *         - (NOTE: Spruce wifi master now uses the Pause device.deviceNetworkId instead of device.name)
+ * v1.4bab - Added debug on/off, cleaned up settings collection pages
+ * v1.5bab - Handle sensor device rename
+ *		   - (NOTE: Sensor names are defined by Hubitat devices - Spruce Cloud App edits will be overwritten)
+ * v1.6bab - Enable instances (not currently supported by Spruce Cloud), with custom label names
+ * v1.7bab - Create/Rename all controllers, zones and schedules when installed AND when updated
+ *		   - Don't delete existing children - rename them if name or label changes in the Spruce Cloud
+ *		   - (NOTE: Contyroller, Zone & Schedule names are defined by the Spruce Cloud App - local edits will be overwritten)
+ *		   - Refresh sensors 30 seconds after initialization (resend all states to Spruce Cloud)
+ *		   - Add 30-second timeout to all http calls
+ *		   - Remove Pause device if not configured
+ *		   - Remove unused/deleted zones & schedules after creating/renaming the current ones
  *
  */
 
@@ -40,8 +54,9 @@ definition(
     oauth: true,
     singleInstance: true
 )
-{    
-}
+String getVersionText()     {return "Spruce Connect v1.7bab\nRelease: 06.02.2020"}
+String getClientId()        {return "hubitat"}
+String getClientSecret()    {return "6137b7f5efabd2f8a82f80c95f6dd50807426f72"}
 
 //-----------------pages----------------------------
 preferences (oauthPage: "authPage") {
@@ -53,10 +68,7 @@ preferences (oauthPage: "authPage") {
 }
 
 def authPage(){
-    atomicState.versionText = "Spruce-Connect v1.3\nRelease: 11.2019"
-    atomicState.clientId = "hubitat"
-    atomicState.clientSecret = "6137b7f5efabd2f8a82f80c95f6dd50807426f72"
-    
+
     if(!atomicState.accessToken) atomicState.accessToken = createAccessToken()	//set = so token is saved to atomicState 
     
     if(!atomicState.authToken){
@@ -81,9 +93,9 @@ def pageConnect(){
         def redirectUrl = oauthInitUrl()
         
         log.debug "redirectUrl ${redirectUrl}"
-        dynamicPage(name: "pageConnect", title: "Connect Account",  uninstall: false, install:false) {
+        dynamicPage(name: "pageConnect", title: "<b>Connect Account<b/>",  uninstall: false, install:false) {
             section {
-                href url: redirectUrl, style:"embedded", required:false, title:"Connect Spruce Account", image: 'http://www.plaidsystems.com/smartthings/st_spruce_leaf_250f.png', description: "Login to grant access"
+                href url: redirectUrl, style:"embedded", required:false, title:"<b>Connect Spruce Account</b>", image: 'http://www.plaidsystems.com/smartthings/st_spruce_leaf_250f.png', description: "Login to grant access"
             }
         }
     }    
@@ -95,10 +107,10 @@ def pageController(){
     	def select_device = getSpruceDevices()
         log.debug select_device
         dynamicPage(name: "pageController", uninstall: true, install:false, nextPage: "pageDevices") {            
-            section("Select Spruce Controller\n to connect with Hubitat") {
-            	input(name: "controller", title:"Select Spruce Controller:", type: "enum", required:true, multiple:false, description: "Tap to choose", options:select_device)
+            section("<b>Spruce Controller<b>") {
+            	input(name: "controller", title:"<b>Select Spruce Controller:</b>", type: "enum", required:true, multiple:false, description: "Click to choose", options:select_device)
     		}
-            section("${atomicState.versionText}"){}
+            section("${getVersionText()}"){}
         }
     }    
     else pageDevices()
@@ -108,21 +120,31 @@ def pageDevices(){
 	if (atomicState.authToken && controllerSelected() && getControllerSettings()){
       log.debug atomicState.zoneUpdate
       log.debug "pageDevices"
-        dynamicPage(name: "pageDevices", uninstall: true, install:true) {
-        	if(atomicState.zoneUpdate == true) section("Device changes found, device tiles will be updated! \n\nDevice tiles and automations must be updated!\n"){}
-         	section("Select settings for connected devices\nConnected controller: ${settings.controller}\nConnected zones: ${zoneList()}") {
-                input "sendPushMessage", "capability.notification", title: "Notification Devices: Hubitat PhoneApp or Pushover", multiple: true, required: false
-                input(name: "notifications", title:"Select Notifications to send:", type: "enum", required:false, multiple:true, description: "Tap to choose", options: ['Schedule','Zone','Valve Fault'])                
+        dynamicPage(name: "pageDevices", title:"<h3><b>${getVersionText()}</b></h3>", uninstall: true, install:true) {
+        	if(atomicState.zoneUpdate == true) section("<b>Device changes found, device tiles will be updated!</b>\n\nDevice tiles and automations must be updated!\n"){}
+            section("<b>Settings for Connected devices\nConnected controller:</b> ${settings.controller}\n<b>Connected zones:</b> ${zoneList()}") {
+				label title: "<b>Enter a name for this instance</b>", required: false, submitOnChange: true
+			}
+			section("<b>Notifications</b>") {
+                input "sendPushMessage", "capability.notification", title: "<b>Notification Devices</b>", descriptionText: "Select Hubitat notification devices", multiple: true, required: false
+                input(name: "notifications", title:"<b>Notifications to Send</b>", type: "enum", required:false, multiple:true, description: "Select desired notifications", options: ['Schedule','Zone','Valve Fault'])                
             }
-            section("Hubitat Spruce Sensors that will report to Spruce Cloud:") {
-                input "sensors", "capability.relativeHumidityMeasurement", title: "Spruce Moisture sensors:", required: false, multiple: true
+            section("<b>Hubitat Spruce Sensors</b>") {
+                paragraph "Select local Spruce Sensors that will be reported to Spruce Cloud:"
+                input "sensors", "device.SpruceSensor", title: "<b>Spruce Moisture Sensors:</b>", required: false, multiple: true
             }
-            section("Pause and resume\n\nUse the Spruce Pause control with Hubitat Rule Machine\nOr add contact sensors without any rules") {
-                input(name: "pause", title:"Turn on to create Spruce Pause control that is accesible from automation routines to pause and resume water", type: 'bool')
-            	input "contacts", "capability.contactSensor", title: "Contact sensors will pause or resume water:", required: false, multiple: true
-                input "delay", "number", title: "The delay in minutes that water will resume after the contact is closed, default=5, max=119", required: false, range: '0..119'
+            section("<b>Pause and resume</b>") {
+                paragraph "Use the Spruce Pause control with Hubitat Rule Machine, or add contact sensors without any rules to pause & resume irrigation."
+                input(name: "pause", title:"<b>Create the Spruce Pause control</b>", type: 'bool', defaultValue: false)
+            	input "contacts", "capability.contactSensor", title: "<b>Contact Sensors</b>", descriptionText: "Select contact sensors that will pause watering when open", required: false, multiple: true
+				if (settings.contacts) input "delay", "number", title: "<b>Resume Watering Delay</b> (in minutes, default=5, max=119)", 
+					descriptionText:"Delay after the contact${contacts?.size()>1?'s are':' is'} closed</b>\n(Delay in minutes default=5, max=119)", defaultValue: 5, required: false, range: '0..119'
             }
-            section("${atomicState.versionText}"){}
+            section('') {
+                input "debugOn", "bool", title: "<b>Enable debug logging</b>", defaultValue: true
+		        input "infoOn", "bool", title: "<b>Enable descriptionText logging?</b>", defaultValue: true
+            }
+            section("${getVersionText()}"){}
         }   
     }    
     else {
@@ -134,11 +156,12 @@ def pageDevices(){
 def zoneList(){
 	def tempZoneMap = atomicState.zoneMap
     def zoneString = ""
+	def comma = ''
     tempZoneMap.sort().each{
         def zone_name = "Zone ${it.key}"
         if ("${tempZoneMap[it.key]['zone_name']}" != 'null') zone_name = "${tempZoneMap[it.key]['zone_name']}"
-    	zoneString += zone_name
-        zoneString += ","
+    	zoneString += (comma + zone_name)
+        if (!comma) comma = ", "
     }
     return zoneString;
 }
@@ -197,22 +220,38 @@ def updated() {
 }
 
 def initialize() {	
-    log.debug "initialize"
+    log.debug "${app.label} - Initializing..."
+	if (infoOn) log.info "${app.label} - info logging enabled"
+	if (debugOn) log.debug "${app.label} - debug logging enabled for 30 minutes"
+	atomicState.versionText = getVersionText()
+	atomicState.clientId = getClientId()
+	atomicState.clientSecret = getClientSecret()
+	
     atomicState.zones_on = 0
     
-    if (settings.sensors) getSensors()
+	if (settings.sensors) {getSensors(); runIn(30, sensorUpdater, [overwrite: true]); }
     if (settings.contacts) getContacts()
     
     //add devices to web, check for schedules
     if(atomicState.accessToken){
-    	log.debug getApiServerUrl()
-        addDevices()
+    	if (debugOn) log.debug getApiServerUrl()
+        addDevices()					// Add/update Sensors to DB
+		atomicState.zoneUpdate = true	// Check for new or renamed zones
+		atomicState.manUpdate = true	// Check for new of renamed manual schedules
     	createChildDevices()        
-	}    
+	}  
+	
+    if (debugOn) runIn(1800, debugOff, [overwrite: true])
+}
+
+def debugOff(){
+    log.debug "${app.label} - debug logging disabled..."
+    app.updateSetting("debugOn",[value:"false",type:"bool"])
+    settings.debugOn = false
 }
 
 def uninstalled() {
-    log.debug "uninstall"
+    if (debugOn) log.debug "uninstall"
     removeChildDevices()   
 }
 
@@ -229,7 +268,7 @@ def getSpruceDevices(){
 
 //sensor subscriptions
 def getSensors(){    
-    log.debug "getSensors: " + settings.sensors    
+    if (debugOn) log.debug "getSensors: " + settings.sensors    
     
     def tempSensors = [:]
     settings.sensors.each{
@@ -244,7 +283,7 @@ def getSensors(){
 
 //contact subscriptions
 def getContacts(){    
-    log.debug "getContacts: " + settings.contacts    
+    if (debugOn) log.debug "getContacts: " + settings.contacts    
     
     def tempContacts = [:]
     settings.contacts.each{
@@ -259,30 +298,85 @@ def getContacts(){
 
 //create zone tiles children
 private void createChildDevices(){
-	log.debug "create zone children ${atomicState.zoneUpdate} with ${app.id}"
+	if (debugOn) log.debug "create zone children ${atomicState.zoneUpdate} with ${app.id}"
     if(atomicState.zoneUpdate == true){
-    	removeChildDevices()
+    	//removeChildDevices()
     
-        //set Spruce Controller Name        
-        addChildDevice("plaidsystems", "Spruce wifi master", "${app.id}.0", null, [completedSetup: true, label: "${settings.controller}", isComponent: false, name: "wifi"])
+        //set Spruce Controller Name  
+		String controllerName = settings.controller
+		if (!controllerName.contains("Spruce")) controllerName = "Spruce " + controllerName
+		if (!controllerName.contains("Controller")) controllerName = controllerName + " Controller"
+		def existingChild = getChildDevice("${app.id}.0") // childDevices?.find(it.value.deviceNetworkId == "${app.id}.0")	// The controller
+		String name = "Spruce WiFi Controller"
+		if (!existingChild) {
+			if (infoOn) log.info "${app.label} - Creating Controller: ${controllerName} / ${name} (${app.id}0)"
+        	addChildDevice("plaidsystems", "Spruce wifi master", "${app.id}.0", null, [completedSetup: true, label: "${controllerName}", isComponent: false, name: name])
+		} else {
+			boolean renamed = false
+			if (existingChild.name != name) {
+				existingChild.name = name
+				renamed = true
+			}
+			if (existingChild.label != controllerName) {
+				existingChild.label = controllerName
+				renamed = true
+			}
+			if (renamed) {
+				if (infoOn) log.info "${app.label} - Renamed Controller ${controllerName} / ${name} (${app.id}.0)"
+			} else {
+				if (infoOn) log.info "${app.label} - Controller ${controllerName} / ${name} (${app.id}.0) already exists"
+			}
+		}
 
-        //Create children   
+        //Create children
+		String prefix = controllerName.endsWith(' Controller') ? controllerName - " Controller" : controllerName
         def tempZoneMap = atomicState.zoneMap
-        tempZoneMap.each{            
-            addChildDevice("plaidsystems", "Spruce wifi zone", "${app.id}.${it.key}", null, [completedSetup: true, label: "${tempZoneMap[it.key]['zone_name']}", isComponent: false, name: "Zone ${it.key}"])
+        tempZoneMap.each{
+			String label = "${prefix} ${it.key} - ${tempZoneMap[it.key]['zone_name']}"
+			name = "${controllerName} Zone ${it.key}"
+			String childDNI = "${app.id}.${it.key}"
+			existingChild = getChildDevice(childDNI) //getChildDevices().find(it.deviceNetworkId == childDNI)
+			if (!existingChild) {
+				if (infoOn) log.info "${app.label} - Adding Spruce wifi zone: ${label} / ${name} (${childDNI})"
+				addChildDevice("plaidsystems", "Spruce wifi zone", childDNI, null, [completedSetup: true, label: label, isComponent: false, name: name])
+			} else {
+				boolean renamed = false
+				if (existingChild.name != name) {
+					existingChild.name = name
+					renamed = true
+				}
+				if (existingChild.label != label) {
+					existingChild.label = label
+					renamed = true
+				}
+				if (renamed) {
+					if (infoOn) log.info "${app.label} - Renamed Spruce wifi zone ${label} / ${name} (${childDNI})"
+				} else {
+					if (infoOn) log.info "${app.label} - Spruce wifi zone ${label} / ${name} (${childDNI}) already exists"
+				}
+			}
         }
+		//remove any unused child zones
+		childDevices?.each() {
+			if (it.typeName == "Spruce wifi zone") {
+				def index = it.deviceNetworkId.toString().tokenize('.').last()
+				if (!tempZoneMap || !tempZoneMap[index]) {
+					if (infoOn) log.info "${app.label} - Removing unused Spruce wifi zone ${it.label} / ${it.name} (${it.deviceNetworkId})"
+					deleteChildDevice(it.deviceNetworkId)
+				}
+			}
+		}
     }
-    if (atomicState.manUpdate == true) child_schedules("${app.id}.0")
-        
+    if (atomicState.manUpdate == true) child_schedules("${app.id}.0")      
 }
 
-//remove zone tiles children
+//remove zone tiles children - SHOULD ONLY BE CALLED WHEN REMOVING THIS INSTANCE!!!
 private removeChildDevices() {
-	log.debug "remove children"
+	if (debugOn) log.debug "remove ALL children"
 	
     //get and delete children avoids duplicate children
     def children = getChildDevices()  
-    log.debug children
+	if (debugOn) log.debug "removing ${children}"
     if(children != null){
         children.each{
         	deleteChildDevice(it.deviceNetworkId)
@@ -292,28 +386,62 @@ private removeChildDevices() {
 
 //add child device tiles to master
 def child_schedules(dni){
-	log.debug "get child tiles for master"
-	def childDevice = childDevices.find{it.deviceNetworkId == dni}
-    log.debug "${childDevice}"
+	if (debugOn) log.debug "get child tiles for master"
+	def childDevice = getChildDevice(dni) 	// childDevices.find{it.deviceNetworkId == dni}
+    if (debugOn) log.debug "${childDevice}"
     
-    if(settings.pause == true) childDevice.createScheduleDevices("${app.id}", 99, 0, "Spruce Pause")
+	String controllerName = settings.controller
+	if (!controllerName.startsWith("Spruce ")) controllerName = "Spruce " + controllerName
+	if (!controllerName.endsWith(" Controller")) controllerName = controllerName + " Controller"
+	
+    // Pause Device for this Controller
+	if(settings.pause == true) {
+		if (!childDevice.getChildDevice("${app.id}.99")) {
+			childDevice.createScheduleDevices("${app.id}", 99, 0, "${controllerName} Pause")
+			if (infoOn) log.info "${app.label} - Added ${controllerName} Pause device (${app.id}.99)"
+		} else {
+			if (infoOn) log.info "${app.label} - ${controllerName} Pause device (${app.id}.99) already exists"
+		}
+	} else {
+		if (childDevice.getChildDevice("${app.id}.99")) {
+			if (infoOn) log.info "${app.label} - Removing ${controllerName} Pause device (${app.id}.99)"
+			childDevice.removeScheduleDevice("${app.id}", 99)
+		}
+	}
     
     //add manual schedules
-    def manualschs = atomicState.manualMap    
-    manualschs.each{        
-    	childDevice.createScheduleDevices("${app.id}", it.key, manualschs[it.key]["scheduleid"], manualschs[it.key]["name"])        
-        }
+    def manualschs = atomicState.manualMap   
+    manualschs?.each{        
+    	childDevice.createScheduleDevices("${app.id}", it.key, manualschs[it.key]["scheduleid"], manualschs[it.key]["name"])
+		if (infoOn) log.info "${app.label} - Added ${manualschs[it.key]["name"]} Schedule device (${app.id}.${it.key})"
+    }
+	
+	//and then remove any manual schedules that are no longer enabled
+	if (!manualschs && (settings.pause == false)) {
+		if (infoOn) log.info "${app.label} - Removing all children of ${childDevice}"
+		childDevice.removeScheduleDevices()	// remove all the Controller's children
+	} else {
+		childDevice.getChildDevices()?.each {
+			if (it.deviceNetworkId != "${app.id}.99") {		// Pause device should have already been deleted above...
+				def index = it.deviceNetworkId.toString().tokenize('.').last()
+				if (!manualschs || !manualschs[index]) {
+					if (infoOn) log.info "${app.label} - Removing unused Schedule ${it.label} / ${it.name} (${it.deviceNetworkId})"
+					childDevice.removeScheduleDevice("${app.id}", index)
+				}
+			}
+		}
+	}
 }
 
 //add zone settings to child tile
 def child_zones(dni){
-	def childDevice = childDevices.find{it.deviceNetworkId == dni}
-    log.debug "${childDevice.deviceNetworkId}"
+	def childDevice = getChildDevice(dni)	// childDevices.find{it.deviceNetworkId == dni}
+    if (debugOn) log.debug "${childDevice.deviceNetworkId}"
         
     def tempZoneMap = atomicState.zoneMap    
     tempZoneMap.each{    	
         if("${app.id}.${it.key}" == childDevice.deviceNetworkId){
-        	log.debug it.key
+        	if (debugOn) log.debug it.key
             childDevice.childSettings(it.key, tempZoneMap[it.key])
         }
     }    
@@ -326,7 +454,7 @@ def addDevices(){
     def key = atomicState.authToken
     def tempSensorMap = atomicState.sensors
     tempSensorMap.each{
-    	log.debug "Add Sensor to DB ${it.key}"
+    	//if (debugOn) log.debug "Add Sensor to DB ${it.key}"
     	def POSTparams = [
             uri: "https://api.spruceirrigation.com/v2/sensor",
             headers: [ 	"Authorization": "Bearer ${key}"],
@@ -334,17 +462,19 @@ def addDevices(){
                 device_id: it.value,
                 sensor_name: it.key,                
                 gateway: "smartthings" //gateway must be labeled smartthings until a later date
-                ]
+                ],
+			timeout: 30
         ]
         //sendPost(POSTparams)
         try{
-            httpPost(POSTparams){
-                resp -> //resp.data {
-                    log.debug "${resp.data}"               
+            httpPost(POSTparams) { resp -> //resp.data {
+                if (infoOn) {
+                	log.info "${app.label} - Add Sensor ${it.key} to DB: ${resp?.data?.message}"
+				}
             }                
         } 
         catch (e) {
-            log.debug "send DB error: $e"
+			log.warn "${app.label} - Add Sensor ${it.key} to DB error: $e"
         }
     }    
 
@@ -357,15 +487,16 @@ def getControllerList(){
 	def key = atomicState.authToken
     def tempMap = [:]
     def newuri =  "https://api.spruceirrigation.com/v2/controllers"    
-    log.debug newuri
+    if (debugOn) log.debug newuri
     
     def GETparams = [
         uri: newuri,		
         headers: [ 	"Authorization": "Bearer ${key}"],
+		timeout: 30
     ]
 
     try{ httpGet(GETparams) { resp ->	
-    	log.debug "resp-> ${resp.data}"        
+    	if (debugOn) log.debug "resp-> ${resp.data}"        
         resp.data.each{        	
             tempMap += ["${resp.data[it.key]['controller_name']}": it.key]
         }        
@@ -381,7 +512,7 @@ def getControllerList(){
 
 //check for pre-set schedules
 def getControllerSettings(){
-	log.debug "-----------settings----------------"
+	if (debugOn) log.debug "-----------settings----------------"
     def respMessage = ""
     def key = atomicState.authToken
 
@@ -389,13 +520,13 @@ def getControllerSettings(){
    	def tempSwitch = atomicState.switches    
     
     tempSwitch.each{
-        log.debug "key ${it.key} ${it.value}"
+        if (debugOn) log.debug "key ${it.key} ${it.value}"
         if (it.key == settings.controller) controller_id = it.value
     }
    
     def newuri =  "https://api.spruceirrigation.com/v2/controller_settings?controller_id="
 	newuri += controller_id
-    log.debug newuri
+    if (debugOn) log.debug newuri
         
     def scheduleType
     def scheduleID = []
@@ -409,11 +540,12 @@ def getControllerSettings(){
     def GETparams = [
         uri: newuri,		
         headers: [ 	"Authorization": "Bearer ${key}"],
+		timeout: 30
     ]
 
     try{ httpGet(GETparams) { resp ->	
         //get schedule list
-        log.debug "Get setting for ${resp.data.controller_name}"
+        if (debugOn) log.debug "Get setting for ${resp.data.controller_name}"
         def i = 1
         def j = 1
         
@@ -464,7 +596,7 @@ def getControllerSettings(){
         else return false
     }
     
-    log.debug tempManMap
+    if (debugOn) log.debug tempManMap
     
     if(atomicState.manualMap != null){
         if ("${tempManMap.sort()}" != "${atomicState.manualMap.sort()}") atomicState.manualUpdate = true
@@ -500,7 +632,7 @@ def getControllerSettings(){
 //***************** event handlers *******************************
 
 def parse(description) {
-	log.debug(description)
+	if (debugOn) log.debug(description)
 }
 
 def getScheduleName(scheduleid){	
@@ -518,52 +650,122 @@ def getScheduleName(scheduleid){
         
 	return scheduleName
 }
-
+def sensorUpdater() {
+	if (settings.sensors) {
+		if (infoOn) log.info "${app.label} - Updating DB states for ${settings.sensors.size()} sensors"
+		if (!atomicState.sensors) {
+			def tempSensors = [:]
+			settings.sensors.each{
+				tempSensors[it] = (it.device.zigbeeId)
+			}
+			atomicState.sensors = tempSensors
+		}
+		def uri = "https://api.spruceirrigation.com/v2/"
+		settings.sensors.each{
+			def moisture = it.currentValue('humidity')
+			def temperature = it.currentValue('temperature')
+			if ( temperature && (temperatureScale == 'C')) temperature = temperature * 9/5 + 32
+			def battery = it.currentValue('battery')?.toInteger() * 5 + 2500
+			
+			if (moisture) {
+				if (infoOn) log.info "${app.label} - ${it.displayName}, moisture: ${moisture}"
+				def POSTparams = [
+					uri: uri + "moisture",
+					body: [
+						deviceid: it.device.zigbeeId,
+						value: moisture                        
+					],
+					timeout: 30
+				]
+				sendPost(POSTparams)
+			}
+			if (temperature) {
+				if (infoOn) log.info "${app.label} - ${it.displayName}, temperature: ${temperature}"
+				def POSTparams = [
+					uri: uri + "temperature",
+					body: [
+						deviceid: it.device.zigbeeId,
+						value: temperature                        
+					],
+					timeout: 30
+				]
+				sendPost(POSTparams)
+			}
+			if (battery) {
+				if (infoOn) log.info "${app.label} - ${it.displayName}, battery: ${battery}"
+				def POSTparams = [
+					uri: uri + "battery",
+					body: [
+						deviceid: it.device.zigbeeId,
+						value: battery                        
+					],
+					timeout: 30
+				]
+				sendPost(POSTparams)
+			}
+		}
+		if (infoOn) log.info "${app.label} - Sensor updates finished"
+	} else {
+		if (infoOn) log.info "${app.label} - - No sensors configured"
+	}
+}
 //sensor evts
 def sensorHandler(evt) {
-    log.debug "sensorHandler: ${evt.device}, ${evt.name}, ${evt.value}"
+    if (infoOn) log.info "${app.label} - ${evt.device.displayName}, ${evt.name}: ${evt.value}"
     
-    def device = atomicState.sensors["${evt.device}"]
-    def value = evt.value
-    def uri = "https://api.spruceirrigation.com/v2/"
-    
-    if (evt.name == "humidity") uri += "moisture"
-    
-    if (evt.name == "temperature"){
-    	uri += "temperature"
-        if (evt.unit == "C") value = evt.value.toInteger() * 9/5 + 32
-    }
-        
-    //added for battery
-    if (evt.name == "battery"){
-        uri += "battery"
-        value = evt.value.toInteger() * 5 + 2500
-    }
-            
-    def POSTparams = [
-                    uri: uri,
-                    body: [
-                        deviceid: device,
-                        value: value                        
-                    ]
-                ]
+    String device = atomicState.sensors["${evt.device}"] as String
+	if (!device && settings.sensors) {
+		// Oops - looks like we had a name change - rebuild the name/id Map
+		def tempSensors = [:]
+    	settings.sensors.each{
+    		tempSensors[it]= (it.device.zigbeeId)
+        }
+    	atomicState.sensors = tempSensors
+		device = tempSensors["${evt.device}"] as String
+	}
+	if (device) {
+		def value = evt.value
+		def uri = "https://api.spruceirrigation.com/v2/"
 
-	sendPost(POSTparams)
+		if (evt.name == "humidity") {
+			uri += "moisture"
+		} else if (evt.name == "temperature"){
+			uri += "temperature"
+			if (evt.unit == "C") value = evt.value * 9/5 + 32 // was evt.value.toInteger() - no need to truncate the value like that
+		} else if (evt.name == "battery"){
+			//added for battery
+			uri += "battery"
+			value = evt.value.toInteger() * 5 + 2500
+		}
+
+		def POSTparams = [
+			uri: uri,
+			body: [
+				deviceid: device,
+				value: value                        
+			],
+			timeout: 30
+		]
+
+		sendPost(POSTparams)
+	} else {
+		if (debugOn) log.debug "No deviceId found for ${evt.device}."
+	}
 }
 
 //contact evts
 def contactHandler(evt) {
-    log.debug "contactHandler: ${evt.device}, ${evt.name}, ${evt.value}"
+    log.info "${app.label} - contactHandler: ${evt.device}, ${evt.name}, ${evt.value}"
     
     def device = atomicState.contacts["${evt.device}"]    
     def value = evt.value
         
-    def childDevice = childDevices.find{it.deviceNetworkId == "${app.id}.0"}
+	def childDevice = getChildDevice("${app.id}.0")	// childDevices.find{it.deviceNetworkId == "${app.id}.0"}
     
-    log.debug "Found ${childDevice}"
+    if (debugOn) log.debug "Found ${childDevice}"
     if (childDevice != null){    	
         def result = [name: evt.name, value: value, descriptionText: evt.name, isStateChange: true, displayed: false]
-        log.debug result
+        if (debugOn) log.debug result
         childDevice.generateEvent(result)
     }
     
@@ -583,7 +785,7 @@ def contactHandler(evt) {
 
 //refresh settings
 void getChildren(){
-	log.debug "Update Settings"
+	if (debugOn) log.debug "Update Settings"
     
 	if (getControllerSettings()){
 		def children = getChildDevices()
@@ -592,21 +794,21 @@ void getChildren(){
         }
     }
         
-    def childDevice = childDevices.find{it.deviceNetworkId == "${app.id}.0"}
+	def childDevice = getChildDevice("${app.id}.0")	// childDevices.find{it.deviceNetworkId == "${app.id}.0"}
     childDevice.updateChildren()
 }
 
 //big tile events
 def event(){
-	log.debug "cloud event: ${params.command}"
+	if (debugOn) log.debug "cloud event: ${params.command}"
     def command = params.command
 	def event = command.split(',')
     
-	def masterDevice = childDevices.find{it.deviceNetworkId == "${app.id}.0"}
+	def masterDevice = getChildDevice("${app.id}.0")	// childDevices.find{it.deviceNetworkId == "${app.id}.0"}
     if (masterDevice != null){  	
         def scheduleName = getScheduleName(event[2])
         def result = [name: 'status', value: "${event[0]}", descriptionText: "${scheduleName} starting\n${event[1]}", isStateChange: true, displayed: false]
-        log.debug result        
+        if (debugOn) log.debug result        
         masterDevice.generateEvent(result)
         
         def tempManualMap = atomicState.manualMap        
@@ -621,10 +823,10 @@ def event(){
 
 //rain sensor onoff
 def rain(){
-	log.debug(params.command)
+	if (debugOn) log.debug(params.command)
     // use the built-in request object to get the command parameter
     def command = params.command
-    log.debug "Spruce incoming rain=>>  ${command}"
+    if (debugOn) log.debug "Spruce incoming rain=>>  ${command}"
     
     def zoneonoff = command.split(',')
             
@@ -632,10 +834,10 @@ def rain(){
     def value = (zoneonoff[1].toInteger() == 1 ? 'on' : 'off')
     def message = "rain sensor is ${value}"
             
-    def masterDevice = childDevices.find{it.deviceNetworkId == "${app.id}.0"}
+    def masterDevice = getChildDevice("${app.id}.0")	// childDevices.find{it.deviceNetworkId == "${app.id}.0"}
     
     def result = [name: name, value: value, descriptionText: "${masterDevice} ${message}", isStateChange: true, displayed: true]
-    log.debug result
+    if (debugOn) log.debug result
     masterDevice.generateEvent(result)
     
     return [error: false, return_value: 1]
@@ -644,10 +846,10 @@ def rain(){
 //pause onoff
 //changed to hold, hubitat throws error when pause command executed
 def hold(){
-	log.debug(params.command)
+	if (debugOn) log.debug(params.command)
     // use the built-in request object to get the command parameter
     def command = params.command
-    log.debug "Spruce incoming pause=>>  ${command}"
+    if (debugOn) log.debug "Spruce incoming pause=>>  ${command}"
     
     def zoneonoff = command.split(',')
             
@@ -655,10 +857,10 @@ def hold(){
     def value = (zoneonoff[1].toInteger() == 1 ? 'on' : 'off')
     def message = "pause is ${value}"
             
-    def masterDevice = childDevices.find{it.deviceNetworkId == "${app.id}.0"}
+    def masterDevice = getChildDevice("${app.id}.0")	// childDevices.find{it.deviceNetworkId == "${app.id}.0"}
     
     def result = [name: name, value: value, descriptionText: "${masterDevice} ${message}", isStateChange: true, displayed: true]
-    log.debug result
+    if (debugOn) log.debug result
     masterDevice.generateEvent(result)
     
     return [error: false, return_value: 1]
@@ -668,10 +870,10 @@ def hold(){
 
 //turn on/off zones of child devices
 def zone_state(){
-	log.debug "cloud zone_state: ${params.command}"
+	if (debugOn) log.debug "cloud zone_state: ${params.command}"
     // use the built-in request object to get the command parameter
     def command = params.command
-    log.debug "Spruce incoming zone=>>  ${command}"
+    if (debugOn) log.debug "Spruce incoming zone=>>  ${command}"
     
     //check sz to filter out command
     def zoneonoff = command.split(',')
@@ -685,8 +887,8 @@ def zone_state(){
     else if (zoneonoff[1].toInteger()<10) ks = "0${zoneonoff[1]}"
    	else ks = zoneonoff[1]
 
-    def childDevice = childDevices.find{it.deviceNetworkId == "${app.id}.${ks}"}
-    def masterDevice = childDevices.find{it.deviceNetworkId == "${app.id}.0"}    
+		def childDevice = getChildDevice("${app.id}.${ks}")	// childDevices.find{it.deviceNetworkId == "${app.id}.${ks}"}
+    def masterDevice = getChildDevice("${app.id}.0")		// childDevices.find{it.deviceNetworkId == "${app.id}.0"}   
     def name = 'switch'
     def value
     def message
@@ -710,7 +912,7 @@ def zone_state(){
     
     if (zone_on < 0) zone_on = 0
     if (ks == "0" && value == 'off') zone_on = 0
-    log.debug "zone_on count: ${zone_on}"
+    if (debugOn) log.debug "zone_on count: ${zone_on}"
     /*
     if (atomicState.zones_on == 0 && zone_on == 1) masterDevice.generateEvent([name: 'switch', value: "on", descriptionText: "${settings.controller} ${message}", isStateChange: true, displayed: true])
     else if (atomicState.zones_on >= 1 && zone_on == 0) masterDevice.generateEvent([name: 'switch', value: "off", descriptionText: "${settings.controller} ${message}", isStateChange: true, displayed: true])    
@@ -730,7 +932,7 @@ def zone_state(){
     
     def zoneResult = [name: name, value: value, descriptionText: "${childDevice} ${message}", isStateChange: true, displayed: true]
     
-    //log.debug zoneResult
+    //if (debugOn) log.debug zoneResult
     childDevice.generateEvent(zoneResult)
     
     def masterResult = [name: name, value: value, descriptionText: "${childDevice} ${message}", isStateChange: true, displayed: true]
@@ -758,12 +960,12 @@ def zone_state(){
 
 //turn on/off zones to cloud
 void zoneOnOff(dni, onoff, level) {
-    log.debug "Cloud zoneOnOff ${dni} ${onoff} ${level}"
+    if (debugOn) log.debug "Cloud zoneOnOff ${dni} ${onoff} ${level}"
    	
     String zone_dni = "${dni}"
     def zone = zone_dni[-2..-1]
     
-    log.debug zone
+    if (debugOn) log.debug zone
 
     def POSTparams = [
         uri: 'https://api.spruceirrigation.com/v2/zone',
@@ -771,7 +973,8 @@ void zoneOnOff(dni, onoff, level) {
             zone: zone,
             zonestate: onoff,
             zonetime: level*60
-        ]
+        ],
+		timeout: 30
     ]
 
     sendPost(POSTparams)
@@ -782,7 +985,7 @@ void scheduleOnOff(name, onoff){
 	def OnOff = 'stopped'
     if (onoff.toInteger() == 1) OnOff = 'started'
     def message = "Schedule ${name} ${OnOff}"
-    log.debug "scheduleOnOff ${name} ${OnOff}"
+    if (debugOn) log.debug "scheduleOnOff ${name} ${OnOff}"
     
     note('Schedule',message)
     
@@ -797,7 +1000,8 @@ void scheduleOnOff(name, onoff){
                     body: [
                         scheduleID: scheduleID,
                         onoff: onoff
-                    ]
+                    ],
+					timeout: 30
                 ]
 
     sendPost(POSTparams)
@@ -809,7 +1013,8 @@ void runAll(runtime){
                     uri: 'https://api.spruceirrigation.com/v2/runall',
                     body: [
                         zonetime: runtime
-                    ]
+                    ],
+					timeout: 30
                 ]
 
     sendPost(POSTparams)
@@ -820,7 +1025,8 @@ void send_pause(pausetime = 0){
                     uri: 'https://api.spruceirrigation.com/v2/pause',                    
                     body: [
                         pausetime: pausetime*60
-                    ]
+                    ],
+					timeout: 30
                 ]
 
     sendPost(POSTparams)
@@ -828,7 +1034,8 @@ void send_pause(pausetime = 0){
 
 void send_resume(){
 	def POSTparams = [
-                    uri: 'https://api.spruceirrigation.com/v2/resume'
+                    uri: 'https://api.spruceirrigation.com/v2/resume',
+					timeout: 30
                 ]
 
     sendPost(POSTparams)
@@ -836,7 +1043,8 @@ void send_resume(){
 
 void send_stop(){	
 	def POSTparams = [
-                    uri: 'https://api.spruceirrigation.com/v2/stop'
+                    uri: 'https://api.spruceirrigation.com/v2/stop',
+					timeout: 30
                 ]
 
     sendPost(POSTparams)
@@ -845,7 +1053,7 @@ void send_stop(){
 
 //************* notifications to device, pushed if requested ******************
 def note(type, message){	
-	log.debug "note ${type} ${message}"
+	if (debugOn) log.debug "note ${type} ${message}"
 	if(sendPushMessage && settings.notifications && settings.notifications.contains(type)) sendPushMessage.deviceNotification("${message}")
 }
 
@@ -853,20 +1061,28 @@ def note(type, message){
 
 def sendPost(POSTparams) {
     POSTparams.put( "headers", [ "Authorization": "Bearer ${atomicState.authToken}", "Content-Type": "application/x-www-form-urlencoded"] )
-    //log.debug POSTparams
+    //if (debugOn) log.debug POSTparams
 	try{
         httpPost(POSTparams){
             resp ->
-            log.debug "Post Response ${resp.data}"
-            if ("${resp.data.error}" == 'true') note('error', "${resp.data.message}")
+            //if (debugOn) log.debug "Post Response ${resp.data}"
+			if ("${resp.data.error}" == 'true') note('error', "${resp.data.message}\n ${POSTparams}")
         }                
     } 
+    catch (groovyx.net.http.HttpResponseException error) {
+        if (error.statusCode == 401) {    // Unauthorized
+            log.info "${app.label} - sendPost: Refreshing authorization token"
+            refreshAuthToken()
+            retryInitialRequest(POSTparams)
+        } else {
+            log.warn "send DB error, statusCode: ${error.statusCode}, error: $error"
+        }
+    }
     catch (error) {
-        log.debug "send DB error: $error"        
+        log.warn "send DB error: $error"
         refreshAuthToken()
         retryInitialRequest(POSTparams)
     }
-   	
 }
 
 def retryInitialRequest(POSTparams) {
@@ -874,11 +1090,11 @@ def retryInitialRequest(POSTparams) {
     try{
         httpPost(POSTparams){
             resp ->
-            log.debug "${resp.data}"               
+            if ("${resp.data.error}" == 'true') note('error', "${resp.data.message}")              
         }                
     } 
     catch (error) {
-        log.debug "send DB error: $error"        
+        log.warn "retry send DB error: $error"        
     }
 }
 
@@ -892,15 +1108,15 @@ def oauthInitUrl(){
 	def oauthParams = [
         response_type: "code",
         scope: "basic",
-        client_id: atomicState.clientId,
-        client_secret: atomicState.clientSecret,
+        client_id: getClientId(),
+        client_secret: getClientSecret(),
         state: atomicState.oauthInitState,
         redirect_uri: getFullApiServerUrl() + "/oauth/callback?access_token=${atomicState.accessToken}"
     ]
 	def apiEndpoint = "https://app.spruceirrigation.com/oauth"
     def oAuthInitURL = "${apiEndpoint}/authorize?${toQueryString(oauthParams)}"
     
-    log.debug "oAuthInitURL ${oAuthInitURL}"
+    if (debugOn) log.debug "oAuthInitURL ${oAuthInitURL}"
     return "${oAuthInitURL}"
     
 }
@@ -911,11 +1127,11 @@ String toQueryString(Map m) {
 }
 
 def callback() {
-    log.debug "callback()>> params: $params, params.code ${params.code}"
+    if (debugOn) log.debug "callback()>> params: $params, params.code ${params.code}"
     
     def code = params.code
     def oauthState = params.state
-    log.debug "callback code ${code} state ${oauthState}"
+    if (debugOn) log.debug "callback code ${code} state ${oauthState}"
     // Validate the response from the third party by making sure oauthState == state.oauthInitState as expected
     if (oauthState == atomicState.oauthInitState){
         def tokenParams = [
@@ -924,23 +1140,24 @@ def callback() {
                     grant_type: "authorization_code",
                     code : "${code}",
                     scope : "basic",
-                    client_id : atomicState.clientId,
-                    client_secret: atomicState.clientSecret,
+                    client_id : getClientId(),
+                    client_secret: getClientSecret(),
                     redirect_uri: getFullApiServerUrl() + "/oauth/callback?access_token=${atomicState.accessToken}"
-                ]
+                ],
+			timeout: 30
         ]
         
         httpPost(tokenParams) { resp ->
         	atomicState.refreshToken = resp.data.refresh_token
             atomicState.authToken = resp.data.access_token           
         }
-        log.debug "tokens refresh ${atomicState.refreshToken} auth ${atomicState.authToken} put? ${atomicState.accessTokenPut}"
+        if (debugOn) log.debug "tokens refresh ${atomicState.refreshToken} auth ${atomicState.authToken} put? ${atomicState.accessTokenPut}"
         
         //send access_token to spruce        
         if (atomicState.authToken && !atomicState.accessTokenPut) {
         	
             def accessToken_url = "https://api.spruceirrigation.com/hubitat/accesstoken"
-            log.debug accessToken_url
+            if (debugOn) log.debug accessToken_url
             
             def accessParams = [
             	uri: accessToken_url,
@@ -948,21 +1165,22 @@ def callback() {
                 body: [
                 	hubitat_endpoint: getFullApiServerUrl(),
                     hubitat_token: atomicState.accessToken
-                ]
+                ],
+				timeout: 30
             ]
             
             try{
                 httpPost(accessParams) { resp ->
-            	    log.debug resp.data
+            	    if (debugOn) log.debug resp.data
                     if (resp.data.error == false){
-                        log.debug "success"
+                        if (debugOn) log.debug "success"
                         atomicState.accessTokenPut = true
                         success()                        
                     }
                     else fail()
                 }
             } catch(Exception e){
-                log.debug e
+                log.error e
                 fail()
             }
             
@@ -976,13 +1194,14 @@ def callback() {
 private refreshAuthToken() {
     def refreshParams = [        
         uri: "https://app.spruceirrigation.com/oauth/token",
-        body: [grant_type: "refresh_token", refresh_token: atomicState.refreshToken, client_id: atomicState.clientId, client_secret: atomicState.clientSecret]
+        body: [grant_type: "refresh_token", refresh_token: atomicState.refreshToken, client_id: getClientId(), client_secret: getClientSecret()],
+		timeout: 	30
     ]
     try{
         def jsonMap
-        log.debug refreshParams
+        if (debugOn) log.debug refreshParams
         httpPost(refreshParams) { resp ->
-            log.debug resp.data
+            if (debugOn) log.debug resp.data
             if(resp.status == 200)
             {
                 jsonMap = resp.data
@@ -995,7 +1214,7 @@ private refreshAuthToken() {
     	}
     }
     catch (error) {
-        log.debug "token refresh error: $error"
+        log.warn "token refresh error: $error"
         return false
     }
     return true
