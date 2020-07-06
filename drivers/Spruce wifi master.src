@@ -25,6 +25,8 @@
  * No longer assumes childred have been deleted before creating new ones. Instead, will
  * rename existing children if they already exist with different names. Also added removeScheduleDevice()
  * so that parent can delete/remove unused Pause and/or other schedules individually
+-------------06-23-2020 update by BAB--------
+ * Force Hubitat to return the most current attribute values
  */
  
  metadata {
@@ -38,7 +40,7 @@
         attribute "contact", "string"
         attribute "status", "string"
         attribute "message", "string"
-        attribute "rainsensor", "string"        
+        attribute "rainsensor", "string"
         
         command "resume"
         command "pause"        
@@ -143,10 +145,10 @@ void removeScheduleDevices() {
 
 def generateEvent(Map results) {    
     //log.debug "master status: ${device.status}"
-    //log.debug "master switch: ${device.currentValue('switch')}"
+    //log.debug "master switch: ${device.currentValue('switch', true)}"
     log.debug "master results: ${results}"
     
-    if (results.value == 'on' && device.currentValue('switch') != "on"){            
+    if (results.value == 'on' && device.currentValue('switch', true) != "on"){            
         sendEvent(name: "switch", value: 'on', descriptionText: "${results.descriptionText}", displayed: true)
     }    
     switch(results.name) {
@@ -157,12 +159,12 @@ def generateEvent(Map results) {
             break
     //zone status
         case 'zone':       
-            if (results.value == 'on' && device.currentValue('switch') != 'on') sendEvent(name: "status", value: 'active', descriptionText: "${results.descriptionText}", displayed: true)
-            else if (results.value == 'off' && device.currentValue('status') == 'active') off()
+            if (results.value == 'on' && device.currentValue('switch', true) != 'on') sendEvent(name: "status", value: 'active', descriptionText: "${results.descriptionText}", displayed: true)
+            else if (results.value == 'off' && device.currentValue('status', true) == 'active') off()
             break
     //zonehold status
         case 'zonehold':
-            if (results.value == 'on' && device.currentValue('switch') != 'on') sendEvent(name: "status", value: 'active', descriptionText: "${results.descriptionText}", displayed: true)
+            if (results.value == 'on' && device.currentValue('switch', true) != 'on') sendEvent(name: "status", value: 'active', descriptionText: "${results.descriptionText}", displayed: true)
             break
 	//rain sensor     
         case "rainsensor":
@@ -171,7 +173,7 @@ def generateEvent(Map results) {
     //pause
         case "pause":
             sendEvent(name: "${results.name}", value: "${results.value}", descriptionText: "${results.descriptionText}", displayed: true)
-            if(results.value == 'on' && device.currentValue('status') == 'schedule active') sendEvent(name: "status", value: "pause", displayed: false)
+            if(results.value == 'on' && device.currentValue('status', true) == 'schedule active') sendEvent(name: "status", value: "pause", displayed: false)
             else if(results.value == 'off') sendEvent(name: "status", value: "schedule active", displayed: false)
             break
     //contact
@@ -206,7 +208,7 @@ def zoneon(dni) {
     log.debug "zoneon ${dni}"
    	def childDevice = getChildDevice(dni) // childDevices.find{it.deviceNetworkId == dni}    
     
-    if (childDevice?.currentValue('switch') != 'on'){
+    if (childDevice?.currentValue('switch', true) != 'on'){
     	log.debug "master zoneon ${childDevice} ${dni} on"
     	def result = [name: 'switch', value: 'on', descriptionText: "zone is on", isStateChange: true, displayed: true]    
     	childDevice.sendEvent(result)
@@ -221,7 +223,7 @@ def zoneoff(dni) {
 	log.debug "zoneoff ${dni}"
     def childDevice = getChildDevice(dni)	// childDevices.find{it.deviceNetworkId == dni}
     
-    if (childDevice?.currentValue('switch') != 'off'){
+    if (childDevice?.currentValue('switch', true) != 'off'){
     	log.debug "master zoneoff ${childDevice} off"
     	def result = [name: 'switch', value: 'off', descriptionText: "zone is off", isStateChange: true, displayed: true]
     	childDevice.sendEvent(result)
@@ -264,7 +266,7 @@ void pause(){
     def childDevice = state.pauseDeviceNetworkId ? getChildDevice(state.pauseDeviceNetworkId) : null // childDevices.find{it.deviceNetworkId == state.pauseDeviceNetworkId}
     
     //pause only allowed with schedules
-    if(device.currentValue('status').contains('active')){
+    if(device.currentValue('status', true).contains('active')){
         childDevice?.sendEvent(name: "switch", value: 'on', descriptionText: "Pause", isStateChange: true, displayed: true)    
         parent.send_pause()
     }
