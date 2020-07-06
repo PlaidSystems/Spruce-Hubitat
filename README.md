@@ -106,6 +106,11 @@ Install the User App called Spruce Connect and link your Spruce account to your 
      - Reset(step 1) the Spruce Sensor and retry the process
   
 **Current Revision**
+ 
+ - v1.9bab
+    - zone_state() - don't update masterDevice with zone commands
+ - v1.8bab
+    - sensorUpdater displays both battery and batteryRaw (transmit value)
  - Version 1.7bab
     - Create/Rename all controllers, zones and schedules when installed AND when updated
     - Don't delete existing children - rename them if name or label changes in the Spruce Cloud
