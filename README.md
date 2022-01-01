@@ -67,7 +67,7 @@ App Code
   
 **Code Update Overview**
 
-Periodically this code may be updated. WHen changes are made, the revision will change and updating the code on your account will be necissary.  The exsisting app and drivers do not need to be removed.  Simply import the new files over the exsisting files following the same steps in the Code Install Overview.  No additional setup or changes should be required.
+Periodically this code may be updated. When changes are made, the revision will change and updating the code on your account will be necessary.  The existing app and drivers do not need to be removed.  Simply import the new files over the existing files following the same steps in the Code Install Overview.  No additional setup or changes should be required.
     
 **Install Overview**
 
@@ -96,7 +96,7 @@ Install the User App called Spruce Connect and link your Spruce account to your 
 **Spruce Sensor**
 
   1. Disconnect the Spruce Sensor from the Spruce Gen2 Controller or other hubs.  For Gen2 and Gen3 sensors this is done by holding the      magnet to the sensor magnet pad until the sensor has disconnected from the hub.
-     - *Note: The Spruce Sensor does not need to be removed from the Spruce App. After connecting to Hubitat, you may opt to send the data to Spruce App, and the data will associate with the exsisting Sensor in the App.*
+     - *Note: The Spruce Sensor does not need to be removed from the Spruce App. After connecting to Hubitat, you may opt to send the data to Spruce App, and the data will associate with the existing Sensor in the App.*
   2. Go to your Hubitat hub on your PC, go to Devices and then *Discover Devices*, select Zigbee to start the search routine
   3. Tap the magnet to teh Spruce Sensor to start the pair process
   4. Hubitat should identify the Spruce Sensor and give your the option to name the sensor
